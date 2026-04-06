@@ -66,6 +66,14 @@ jobs:
         echo "🏷️ Tag: ${IMAGE_TAG} | Version: ${VERSION_TAG}"
         echo "🚀 Deploying: $BRANCH_NAME | Container: $CONTAINER_NAME | Port: $APP_PORT"
 
+    - name: Create env file
+      run: |
+        if [ "${{ env.BRANCH_NAME }}" = "stage" ]; then
+          echo "${{ secrets.ENV_STAGE }}" > .env.stage
+        else
+          echo "${{ secrets.ENV_PROD }}" > .env.production
+        fi
+
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
