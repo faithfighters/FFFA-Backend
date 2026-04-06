@@ -71,6 +71,8 @@ jobs:
       with:
         context: .
         file: ./Dockerfile
+        build-args: |
+          ENV=${{ env.BRANCH_NAME }}
         push: true
         tags: |
           ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
