@@ -27,6 +27,11 @@ export class UploadService {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
       },
+      // Disable automatic checksums so presigned PUT URLs work from browsers.
+      // AWS SDK v3 defaults to WHEN_SUPPORTED which adds x-amz-checksum-crc32 to
+      // presigned URLs; browsers can't compute/send that header, causing 400s.
+      requestChecksumCalculation: 'WHEN_REQUIRED' as any,
+      responseChecksumValidation: 'WHEN_REQUIRED' as any,
     });
     this.bucket = process.env.S3_BUCKET_NAME || 'fffa';
     this.cfUrl = (process.env.CLOUDFRONT_URL || '').replace(/\/$/, '');
