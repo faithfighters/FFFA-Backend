@@ -41,7 +41,7 @@ export class StripeController {
     const user = await this.usersService.findById(req.user.userId);
     if (!user) throw new NotFoundException('User not found.');
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
@@ -119,7 +119,7 @@ export class StripeController {
     if (!user?.stripeCustomerId)
       throw new BadRequestException('No Stripe customer found.');
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
       return_url: `${frontendUrl}/dashboard`,
