@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Body, Req, Res, UseGuards, HttpCode } from '@nestjs/common';
 import { Request, Response } from 'express';
+import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
@@ -66,6 +67,39 @@ export class AuthController {
     const user = await this.usersService.findById(req.user.userId);
     if (!user) throw new (await import('@nestjs/common')).NotFoundException('User not found.');
     return { user: this.usersService.sanitize(user) };
+  }
+
+  @ApiOperation({ summary: 'Update current authenticated user profile' })
+  @ApiCookieAuth('fffa_session')
+  @ApiResponse({ status: 200, description: 'Profile updated successfully' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @UseGuards(JwtAuthGuard)
+  @Post('update-profile')
+  async updateProfile(
+    @Req() req: Request & { user: { userId: string } },
+    @Body() body: { name?: string; password?: string; image?: string },
+  ) {
+    const updates: any = {};
+    if (body.name) {
+      updates.name = body.name.trim();
+    }
+    if (body.image) {
+      updates.image = body.image.trim();
+    }
+    if (body.password) {
+      if (body.password.length < 8) {
+        throw new (await import('@nestjs/common')).BadRequestException('Password must be at least 8 characters long.');
+      }
+      updates.passwordHash = await bcrypt.hash(body.password, 12);
+    }
+    
+    if (Object.keys(updates).length === 0) {
+      throw new (await import('@nestjs/common')).BadRequestException('No update data provided.');
+    }
+
+    const updatedUser = await this.usersService.update(req.user.userId, updates);
+    if (!updatedUser) throw new (await import('@nestjs/common')).NotFoundException('User not found.');
+    return { user: this.usersService.sanitize(updatedUser) };
   }
 
   @ApiOperation({ summary: 'Logout and clear session cookie' })

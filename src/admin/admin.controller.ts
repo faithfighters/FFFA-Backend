@@ -55,25 +55,44 @@ export class AdminController {
   }
 
   // ── Videos ───────────────────────────────────────────────
-  @ApiOperation({ summary: 'List all video submissions (all statuses)' })
+  @ApiOperation({ summary: 'List all video submissions (all statuses, optional reported filter)' })
   @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'reported', required: false })
   @Get('videos')
-  async getVideos(@Query('status') status?: string) {
-    const filter = status ? { status } : {};
+  async getVideos(@Query('status') status?: string, @Query('reported') reported?: string) {
+    const filter: any = {};
+    if (status) filter.status = status;
+    if (reported === 'true') filter.isReported = true;
     const videos = await this.videosService.findAll(filter);
     return { videos };
   }
 
-  @ApiOperation({ summary: 'Update video status' })
+  @ApiOperation({ summary: 'Update video status or report status' })
   @ApiParam({ name: 'id' })
   @Patch('videos/:id')
-  async updateVideo(@Param('id') id: string, @Body() body: { status: string }) {
-    const { status } = body;
-    if (!['approved', 'rejected', 'pending'].includes(status))
+  async updateVideo(
+    @Param('id') id: string,
+    @Body() body: {
+      status?: string;
+      isReported?: boolean;
+      reportCount?: number;
+      reportReasons?: string[];
+    },
+  ) {
+    const { status, isReported, reportCount, reportReasons } = body;
+    if (status && !['approved', 'rejected', 'pending'].includes(status))
       throw new BadRequestException('Invalid status.');
+    
     const video = await this.videosService.findById(id);
     if (!video) throw new NotFoundException('Video not found.');
-    const updated = await this.videosService.update(id, { status } as any);
+    
+    const updates: any = {};
+    if (status !== undefined) updates.status = status;
+    if (isReported !== undefined) updates.isReported = isReported;
+    if (reportCount !== undefined) updates.reportCount = reportCount;
+    if (reportReasons !== undefined) updates.reportReasons = reportReasons;
+    
+    const updated = await this.videosService.update(id, updates);
     return { video: updated };
   }
 
@@ -443,5 +462,88 @@ export class AdminController {
       },
       planParticipation,
     };
+  }
+
+  @ApiOperation({ summary: 'Personal activities stream of the logged-in user' })
+  @Get('activities')
+  async getActivities(@Req() req: any) {
+    const currentUserId = req.user.userId;
+    const [votes, videos, users, causes] = await Promise.all([
+      this.votesService.findAll(),
+      this.videosService.findAll(),
+      this.usersService.findAll(),
+      this.causesService.findAll(),
+    ]);
+
+    const activitiesList: {
+      id: string;
+      type: 'vote' | 'submission' | 'report' | 'signup' | 'moderation';
+      title: string;
+      description: string;
+      user: string;
+      timestamp: string;
+    }[] = [];
+
+    // 1. Current user signup log
+    const currentUser = users.find(u => u._id.toString() === currentUserId);
+    if (currentUser) {
+      activitiesList.push({
+        id: `signup-${currentUser._id}`,
+        type: 'signup',
+        title: 'Account Created',
+        description: `You joined FaithFighters as an ${currentUser.role === 'admin' ? 'Administrator' : currentUser.role === 'moderator' ? 'Moderator' : 'Member'}.`,
+        user: 'You',
+        timestamp: (currentUser as any).createdAt?.toISOString() || new Date().toISOString(),
+      });
+    }
+
+    // 2. Video submissions and moderation actions by current user
+    for (const v of videos) {
+      // Your submissions
+      if (v.authorId && v.authorId.toString() === currentUserId) {
+        activitiesList.push({
+          id: `submission-${v._id}`,
+          type: 'submission',
+          title: 'Campaign Reel Uploaded',
+          description: `You uploaded a campaign reel: "${v.title}" in support of cause "${v.causeTag}".`,
+          user: 'You',
+          timestamp: (v as any).createdAt?.toISOString() || new Date().toISOString(),
+        });
+      }
+
+      // Your moderation reviews
+      if (v.moderatedBy && v.moderatedBy.toString() === currentUserId) {
+        activitiesList.push({
+          id: `moderation-${v._id}`,
+          type: 'moderation',
+          title: `Campaign ${v.status === 'approved' ? 'Approved' : 'Rejected'}`,
+          description: `You moderated and ${v.status} the campaign reel "${v.title}" submitted by ${v.authorName}.`,
+          user: 'You',
+          timestamp: v.moderatedAt || (v as any).updatedAt?.toISOString() || new Date().toISOString(),
+        });
+      }
+    }
+
+    // 3. Votes cast by current user
+    for (const v of votes) {
+      if (v.userId && v.userId.toString() === currentUserId) {
+        const c = causes.find(cause => cause._id.toString() === v.causeId.toString());
+        const causeName = c?.name || 'Cause';
+        
+        activitiesList.push({
+          id: `vote-${v._id}`,
+          type: 'vote',
+          title: 'Votes Submitted',
+          description: `You cast ${v.count} votes in support of cause "${causeName}".`,
+          user: 'You',
+          timestamp: (v as any).createdAt?.toISOString() || new Date().toISOString(),
+        });
+      }
+    }
+
+    // Sort by timestamp descending
+    activitiesList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return { activities: activitiesList.slice(0, 50) };
   }
 }

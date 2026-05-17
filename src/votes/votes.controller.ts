@@ -76,25 +76,46 @@ export class VotesController {
     const existingVotes = await this.votesService.findByUserAndCycle(userId, cycle._id.toString());
     const usedVotes = existingVotes.reduce((s, v) => s + v.count, 0);
 
-    const totalNewVotes = entries.reduce((s, [, c]) => s + c, 0);
-    if (usedVotes + totalNewVotes > planVotes)
+    // Calculate total new votes requested by comparing target allocations with already cast votes
+    const totalNewVotesNeeded = entries.reduce((sum, [causeId, targetCount]) => {
+      const already = existingVotes.find(v => v.causeId.toString() === causeId);
+      const alreadyCount = already ? already.count : 0;
+      const diff = targetCount - alreadyCount;
+      return sum + (diff > 0 ? diff : 0);
+    }, 0);
+
+    if (usedVotes + totalNewVotesNeeded > planVotes)
       throw new BadRequestException(`You only have ${planVotes - usedVotes} donation vote(s) remaining.`);
 
     const perVoteDollars = planKey ? (PLAN_CONFIG[planKey].price * 0.8) / planVotes : 0;
 
-    for (const [causeId, count] of entries) {
+    for (const [causeId, targetCount] of entries) {
       const already = existingVotes.find(v => v.causeId.toString() === causeId);
-      if (already) continue; // skip already-voted causes silently
+      const alreadyCount = already ? already.count : 0;
+      const diff = targetCount - alreadyCount;
+
+      if (diff <= 0) continue; // No new votes allocated to this cause
 
       const cause = await this.causesService.findById(causeId);
       if (!cause) continue;
 
-      await this.votesService.create({ userId, causeId, cycleId: cycle._id.toString(), count });
+      if (already) {
+        // Increment count on existing vote record
+        await this.votesService.updateCount(already._id.toString(), already.count + diff);
+      } else {
+        // Create new vote record
+        await this.votesService.create({ userId, causeId, cycleId: cycle._id.toString(), count: diff });
+      }
+
       await this.causesService.update(causeId, {
-        totalVotes: cause.totalVotes + count,
-        raisedAmount: cause.raisedAmount + perVoteDollars * count,
+        totalVotes: cause.totalVotes + diff,
+        raisedAmount: cause.raisedAmount + perVoteDollars * diff,
       });
     }
+
+    // Properly decrement votesRemaining in user's MongoDB record
+    const updatedRemaining = Math.max(0, planVotes - (usedVotes + totalNewVotesNeeded));
+    await this.usersService.update(userId, { votesRemaining: updatedRemaining });
 
     return { success: true };
   }
@@ -123,16 +144,23 @@ export class VotesController {
       throw new BadRequestException(`You only have ${remaining} donation vote(s) remaining.`);
 
     const alreadyVoted = existingVotes.find(v => v.causeId.toString() === causeId);
-    if (alreadyVoted)
-      throw new BadRequestException('You already donated to this cause this cycle.');
-
-    await this.votesService.create({ userId, causeId, cycleId: cycle._id.toString(), count });
+    if (alreadyVoted) {
+      // Allow multiple/incremental casting by updating the existing vote count
+      await this.votesService.updateCount(alreadyVoted._id.toString(), alreadyVoted.count + count);
+    } else {
+      // Create new vote record
+      await this.votesService.create({ userId, causeId, cycleId: cycle._id.toString(), count });
+    }
 
     const perVoteDollars = planKey ? (PLAN_CONFIG[planKey].price * 0.8) / planVotes : 0;
     await this.causesService.update(causeId, {
       totalVotes: cause.totalVotes + count,
       raisedAmount: cause.raisedAmount + perVoteDollars * count,
     });
+
+    // Properly decrement votesRemaining in user's MongoDB record
+    const updatedRemaining = Math.max(0, remaining - count);
+    await this.usersService.update(userId, { votesRemaining: updatedRemaining });
 
     return { success: true };
   }

@@ -136,4 +136,27 @@ export class VideosController {
 
     return { video: updated };
   }
+
+  /** Report a video submission */
+  @ApiOperation({ summary: 'Report a video submission' })
+  @Post(':id/report')
+  async reportVideo(
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+  ) {
+    const video = await this.videosService.findById(id);
+    if (!video) throw new NotFoundException('Video not found.');
+
+    const updated = await this.videosService.update(id, {
+      isReported: true,
+      reportCount: (video.reportCount || 0) + 1,
+      reportReasons: body.reason 
+        ? [...(video.reportReasons || []), body.reason] 
+        : (video.reportReasons || []).length > 0 
+          ? video.reportReasons 
+          : ['Inappropriate content'],
+    } as any);
+
+    return { success: true, video: updated };
+  }
 }

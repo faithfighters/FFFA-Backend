@@ -18,6 +18,10 @@ export class VotesService {
     return this.voteModel.find({ cycleId: new Types.ObjectId(cycleId) }).exec();
   }
 
+  findAll(): Promise<VoteDocument[]> {
+    return this.voteModel.find().exec();
+  }
+
   create(data: { userId: string; causeId: string; cycleId: string; count: number }): Promise<VoteDocument> {
     return this.voteModel.create({
       userId: new Types.ObjectId(data.userId),
@@ -25,5 +29,9 @@ export class VotesService {
       cycleId: new Types.ObjectId(data.cycleId),
       count: data.count,
     });
+  }
+
+  async updateCount(id: string, count: number): Promise<VoteDocument | null> {
+    return this.voteModel.findByIdAndUpdate(id, { count }, { new: true }).exec();
   }
 }

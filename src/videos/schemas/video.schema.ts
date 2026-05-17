@@ -92,6 +92,16 @@ export class Video {
   /** Internal note visible only to admins/moderators */
   @Prop()
   moderationNote: string;
+
+  // ── Reporting System ───────────────────────────────────
+  @Prop({ default: false })
+  isReported: boolean;
+
+  @Prop({ default: 0 })
+  reportCount: number;
+
+  @Prop({ type: [String], default: [] })
+  reportReasons: string[];
 }
 
 export const VideoSchema = SchemaFactory.createForClass(Video);
