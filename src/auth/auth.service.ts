@@ -2,8 +2,12 @@ import { Injectable, ConflictException, BadRequestException, UnauthorizedExcepti
 import { JwtService } from '@nestjs/jwt';
 import { Response } from 'express';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { PLAN_CONFIG, VALID_PLANS } from '../common/plan-config';
+
+// Short-lived SSO tokens: token → { userId, role, expiresAt }
+const ssoTokens = new Map<string, { userId: string; role: string; expiresAt: number }>();
 
 @Injectable()
 export class AuthService {
@@ -62,5 +66,26 @@ export class AuthService {
 
   clearSessionCookie(res: Response): void {
     res.clearCookie('session');
+  }
+
+  generateSsoToken(userId: string, role: string): string {
+    // Purge expired tokens to prevent unbounded growth
+    const now = Date.now();
+    for (const [key, val] of ssoTokens) {
+      if (val.expiresAt < now) ssoTokens.delete(key);
+    }
+    const token = randomBytes(32).toString('hex');
+    ssoTokens.set(token, { userId, role, expiresAt: now + 60_000 }); // 60s TTL
+    return token;
+  }
+
+  consumeSsoToken(token: string): { userId: string; role: string } | null {
+    const entry = ssoTokens.get(token);
+    if (!entry || entry.expiresAt < Date.now()) {
+      ssoTokens.delete(token);
+      return null;
+    }
+    ssoTokens.delete(token); // one-time use
+    return { userId: entry.userId, role: entry.role };
   }
 }

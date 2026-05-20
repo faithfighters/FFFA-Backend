@@ -34,4 +34,8 @@ export class VotesService {
   async updateCount(id: string, count: number): Promise<VoteDocument | null> {
     return this.voteModel.findByIdAndUpdate(id, { count }, { new: true }).exec();
   }
+
+  async deleteVote(id: string): Promise<void> {
+    await this.voteModel.findByIdAndDelete(id).exec();
+  }
 }

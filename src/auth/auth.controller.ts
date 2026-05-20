@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Req, Res, UseGuards, HttpCode } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, Res, Query, UseGuards, HttpCode, UnauthorizedException } from '@nestjs/common';
 import { Request, Response } from 'express';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
@@ -108,6 +108,33 @@ export class AuthController {
   @HttpCode(200)
   logout(@Res({ passthrough: true }) res: Response) {
     this.authService.clearSessionCookie(res);
+    return { success: true };
+  }
+
+  @ApiOperation({ summary: 'Generate a short-lived SSO token for the current user' })
+  @ApiCookieAuth('fffa_session')
+  @ApiResponse({ status: 200, description: 'Returns a one-time SSO token (valid 60s)' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @Post('sso-token')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  async generateSsoToken(@Req() req: Request & { user: { userId: string; role: string } }) {
+    const token = this.authService.generateSsoToken(req.user.userId, req.user.role);
+    return { token };
+  }
+
+  @ApiOperation({ summary: 'Exchange SSO token for a session cookie' })
+  @ApiResponse({ status: 200, description: 'Session cookie set, returns redirect URL' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired SSO token' })
+  @Get('sso')
+  async exchangeSsoToken(
+    @Query('token') token: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const payload = this.authService.consumeSsoToken(token);
+    if (!payload) throw new UnauthorizedException('Invalid or expired SSO token.');
+    const jwt = this.authService.signToken(payload.userId, payload.role);
+    this.authService.setSessionCookie(res, jwt);
     return { success: true };
   }
 }

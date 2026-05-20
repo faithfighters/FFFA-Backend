@@ -38,8 +38,8 @@ yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — only ignore base .env, commit .env.local / .env.staging / .env.production
+.env
 
 # vercel
 .vercel
@@ -115,12 +115,6 @@ Files to ignore.txt
 # ShellCheck config
 .shellcheckrc
 
-# Environment variables
-.env
-.env.test
-.env.production
-.env.local
-.env.*.local
 
 # Runtime data
 /data
@@ -136,4 +130,3 @@ Thumbs.db
 *.swo
 *.sublime-project
 *.sublime-workspace
-.env.local

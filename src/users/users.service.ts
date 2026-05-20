@@ -28,8 +28,8 @@ export class UsersService {
   }
 
   sanitize(user: UserDocument) {
-    const obj = user.toObject();
-    const { passwordHash, __v, ...safe } = obj as any;
+    const obj = user.toJSON() as any;
+    const { passwordHash, ...safe } = obj;
     return safe;
   }
 }
