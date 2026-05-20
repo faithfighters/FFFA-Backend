@@ -17,9 +17,18 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:3001')
-    .split(',')
-    .map(o => o.trim());
+const allowedOrigins = [
+    // From env (comma-separated list of all allowed origins)
+    ...(process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:3001')
+      .split(',')
+      .map(o => o.trim()),
+    // Always allow production and staging frontends + admin panels
+    'https://faithfightersforamerica.com',
+    'https://www.faithfightersforamerica.com',
+    'https://admin.faithfightersforamerica.com',
+    'https://stage.faithfightersforamerica.com',
+    'https://stage-admin.faithfightersforamerica.com',
+  ].filter(Boolean);
 
   app.enableCors({
     origin: (origin, cb) => {
