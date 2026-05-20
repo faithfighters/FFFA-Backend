@@ -2,7 +2,12 @@ import 'reflect-metadata';
 // Load .env before any module initialisation so process.env is populated
 // when JwtModule.register() and other eager registrations evaluate it.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-require('dotenv').config();
+const envFile = process.env.NODE_ENV === 'production'
+  ? '.env.production'
+  : process.env.NODE_ENV === 'staging'
+  ? '.env.staging'
+  : '.env';
+require('dotenv').config({ path: envFile });
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
