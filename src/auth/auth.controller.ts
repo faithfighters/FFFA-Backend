@@ -119,7 +119,7 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   async generateSsoToken(@Req() req: Request & { user: { userId: string; role: string } }) {
-    const token = this.authService.generateSsoToken(req.user.userId, req.user.role);
+    const token = await this.authService.generateSsoToken(req.user.userId, req.user.role);
     return { token };
   }
 
@@ -131,7 +131,7 @@ export class AuthController {
     @Query('token') token: string,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const payload = this.authService.consumeSsoToken(token);
+    const payload = await this.authService.consumeSsoToken(token);
     if (!payload) throw new UnauthorizedException('Invalid or expired SSO token.');
     const jwt = this.authService.signToken(payload.userId, payload.role);
     this.authService.setSessionCookie(res, jwt);
