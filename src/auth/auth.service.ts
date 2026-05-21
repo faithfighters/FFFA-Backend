@@ -81,8 +81,7 @@ export class AuthService {
       jti,
     };
 
-    // Sign with 30 seconds expiration time
-    return this.jwtService.sign(payload, { expiresIn: '30s' });
+    return this.jwtService.sign(payload, { expiresIn: '5m' });
   }
 
   async consumeSsoToken(token: string): Promise<{ userId: string; role: string } | null> {
