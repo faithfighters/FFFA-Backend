@@ -34,19 +34,21 @@ export class VotesController {
       cycle._id.toString(),
     );
 
-    // Populate full cause objects so the frontend can match by name/tag
-    const causeIds: string[] = (cycle.causes ?? []).map((c: any) => {
-      if (!c) return null;
-      // Mongoose ObjectId → toString(), plain string stays as-is, doc → _id
-      if (typeof c === 'string') return c;
-      if (c._id) return c._id.toString();
-      return c.toString();
-    }).filter(Boolean) as string[];
+    // Populate full cause objects so the frontend can match by name/category
+    let causes: any[] = [];
+    try {
+      const causeIds: string[] = (cycle.causes ?? []).map((c: any) => {
+        if (!c) return null;
+        if (typeof c === 'string') return c;
+        if (c._id) return c._id.toString();
+        try { return c.toString(); } catch { return null; }
+      }).filter(Boolean) as string[];
 
-    const causeDocs = await Promise.all(
-      causeIds.map(id => this.causesService.findById(id).catch(() => null))
-    );
-    const causes = causeDocs.filter(Boolean);
+      const docs = await Promise.all(
+        causeIds.map(id => this.causesService.findById(id).catch(() => null))
+      );
+      causes = docs.filter(Boolean);
+    } catch { /* return empty causes if population fails */ }
 
     return { cycle, causes, userVotes };
   }
