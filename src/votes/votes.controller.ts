@@ -34,23 +34,19 @@ export class VotesController {
       cycle._id.toString(),
     );
 
-    // Fetch all active causes and filter to those in this cycle
-    let causes: any[] = [];
-    try {
-      const allActive = await this.causesService.findActive();
-      const cycleIds = new Set(
-        (cycle.causes ?? []).map((c: any) => {
-          try {
-            if (!c) return '';
-            if (typeof c === 'string') return c;
-            return c._id?.toString() ?? c.toString();
-          } catch { return ''; }
-        }).filter(Boolean)
-      );
-      causes = cycleIds.size > 0
-        ? allActive.filter((c: any) => cycleIds.has(c._id?.toString() ?? ''))
-        : allActive;
-    } catch { /* return empty causes on any error */ }
+    // Populate full cause objects so the frontend can match by name/tag
+    const causeIds: string[] = (cycle.causes ?? []).map((c: any) => {
+      if (!c) return null;
+      // Mongoose ObjectId → toString(), plain string stays as-is, doc → _id
+      if (typeof c === 'string') return c;
+      if (c._id) return c._id.toString();
+      return c.toString();
+    }).filter(Boolean) as string[];
+
+    const causeDocs = await Promise.all(
+      causeIds.map(id => this.causesService.findById(id).catch(() => null))
+    );
+    const causes = causeDocs.filter(Boolean);
 
     return { cycle, causes, userVotes };
   }
