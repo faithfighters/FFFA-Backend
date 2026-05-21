@@ -19,9 +19,13 @@ async function bootstrap() {
 
 const allowedOrigins = [
     // From env (comma-separated list of all allowed origins)
-    ...(process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:3001')
+    ...(process.env.FRONTEND_URL || '')
       .split(',')
       .map(o => o.trim()),
+    // Always allow local development origins
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
     // Always allow production and staging frontends + admin panels
     'https://faithfightersforamerica.com',
     'https://www.faithfightersforamerica.com',
