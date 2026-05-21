@@ -33,7 +33,15 @@ export class VotesController {
       req.user.userId,
       cycle._id.toString(),
     );
-    return { cycle, causes: cycle.causes, userVotes };
+
+    // Populate full cause objects so the frontend can match by name/tag
+    const causeIds: string[] = (cycle.causes ?? []).map((c: any) => c?.id ?? c?.toString());
+    const causeDocs = await Promise.all(
+      causeIds.filter(Boolean).map(id => this.causesService.findById(id))
+    );
+    const causes = causeDocs.filter(Boolean);
+
+    return { cycle, causes, userVotes };
   }
 
   // POST /votes — submit a single vote
