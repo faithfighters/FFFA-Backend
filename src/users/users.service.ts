@@ -27,19 +27,6 @@ export class UsersService {
     return this.userModel.findByIdAndUpdate(id, updates, { new: true }).exec();
   }
 
-  // Fix all users who have a plan but never got votes assigned (e.g. registered via OAuth or before vote tracking)
-  async fixZeroVoteUsers(planVotes: Record<string, number>): Promise<number> {
-    let fixed = 0;
-    for (const [plan, votes] of Object.entries(planVotes)) {
-      const result = await this.userModel.updateMany(
-        { plan, votesTotal: 0 },
-        { $set: { votesTotal: votes, votesRemaining: votes } },
-      ).exec();
-      fixed += result.modifiedCount;
-    }
-    return fixed;
-  }
-
   sanitize(user: UserDocument) {
     const obj = user.toJSON() as any;
     const { passwordHash, ...safe } = obj;

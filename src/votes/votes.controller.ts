@@ -33,22 +33,7 @@ export class VotesController {
       req.user.userId,
       cycle._id.toString(),
     );
-
-    // Populate full cause objects so the frontend can match by name/tag
-    const causeIds: string[] = (cycle.causes ?? []).map((c: any) => {
-      if (!c) return null;
-      // Mongoose ObjectId → toString(), plain string stays as-is, doc → _id
-      if (typeof c === 'string') return c;
-      if (c._id) return c._id.toString();
-      return c.toString();
-    }).filter(Boolean) as string[];
-
-    const causeDocs = await Promise.all(
-      causeIds.map(id => this.causesService.findById(id).catch(() => null))
-    );
-    const causes = causeDocs.filter(Boolean);
-
-    return { cycle, causes, userVotes };
+    return { cycle, causes: cycle.causes, userVotes };
   }
 
   // POST /votes — submit a single vote

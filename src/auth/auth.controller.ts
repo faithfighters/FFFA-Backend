@@ -6,7 +6,6 @@ import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
-import { PLAN_CONFIG } from '../common/plan-config';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -52,19 +51,7 @@ export class AuthController {
     if (!email || !password)
       throw new (await import('@nestjs/common')).BadRequestException('Email and password are required.');
 
-    let user = await this.authService.login(email, password);
-
-    // Auto-fix: if user has a plan but votes were never set (e.g. admin-created, OAuth)
-    if (user.plan && user.votesTotal === 0) {
-      const planKey = user.plan as keyof typeof PLAN_CONFIG;
-      if (PLAN_CONFIG[planKey]) {
-        user = await this.usersService.update(user._id.toString(), {
-          votesRemaining: PLAN_CONFIG[planKey].votes,
-          votesTotal: PLAN_CONFIG[planKey].votes,
-        }) ?? user;
-      }
-    }
-
+    const user = await this.authService.login(email, password);
     const token = this.authService.signToken(user._id.toString(), user.role);
     this.authService.setSessionCookie(res, token);
     return { user: this.usersService.sanitize(user) };
@@ -77,20 +64,8 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async me(@Req() req: Request & { user: { userId: string } }) {
-    let user = await this.usersService.findById(req.user.userId);
+    const user = await this.usersService.findById(req.user.userId);
     if (!user) throw new (await import('@nestjs/common')).NotFoundException('User not found.');
-
-    // Auto-fix: if user has a plan but votes were never set
-    if (user.plan && user.votesTotal === 0) {
-      const planKey = user.plan as keyof typeof PLAN_CONFIG;
-      if (PLAN_CONFIG[planKey]) {
-        user = await this.usersService.update(user._id.toString(), {
-          votesRemaining: PLAN_CONFIG[planKey].votes,
-          votesTotal: PLAN_CONFIG[planKey].votes,
-        }) ?? user;
-      }
-    }
-
     return { user: this.usersService.sanitize(user) };
   }
 

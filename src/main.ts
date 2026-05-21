@@ -5,8 +5,6 @@ import 'reflect-metadata';
 require('dotenv').config();
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { UsersService } from './users/users.service';
-import { PLAN_CONFIG } from './common/plan-config';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const cookieParser = require('cookie-parser');
 import { ValidationPipe } from '@nestjs/common';
@@ -77,14 +75,6 @@ const allowedOrigins = [
     },
     customSiteTitle: 'FFFA API Docs',
   });
-
-  // On every startup: fix users who have a plan but got 0 votes (OAuth signups, admin-created, etc.)
-  const usersService = app.get(UsersService);
-  const planVotes = Object.fromEntries(
-    Object.entries(PLAN_CONFIG).map(([k, v]) => [k, v.votes])
-  );
-  const fixed = await usersService.fixZeroVoteUsers(planVotes);
-  if (fixed > 0) console.log(`[startup] Fixed votes for ${fixed} user(s) with plan but 0 votes.`);
 
   const port = process.env.PORT || 4000;
   await app.listen(port);
