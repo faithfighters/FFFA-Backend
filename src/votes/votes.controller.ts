@@ -34,21 +34,23 @@ export class VotesController {
       cycle._id.toString(),
     );
 
-    // Populate full cause objects so the frontend can match by name/category
+    // Fetch all active causes and filter to those in this cycle
     let causes: any[] = [];
     try {
-      const causeIds: string[] = (cycle.causes ?? []).map((c: any) => {
-        if (!c) return null;
-        if (typeof c === 'string') return c;
-        if (c._id) return c._id.toString();
-        try { return c.toString(); } catch { return null; }
-      }).filter(Boolean) as string[];
-
-      const docs = await Promise.all(
-        causeIds.map(id => this.causesService.findById(id).catch(() => null))
+      const allActive = await this.causesService.findActive();
+      const cycleIds = new Set(
+        (cycle.causes ?? []).map((c: any) => {
+          try {
+            if (!c) return '';
+            if (typeof c === 'string') return c;
+            return c._id?.toString() ?? c.toString();
+          } catch { return ''; }
+        }).filter(Boolean)
       );
-      causes = docs.filter(Boolean);
-    } catch { /* return empty causes if population fails */ }
+      causes = cycleIds.size > 0
+        ? allActive.filter((c: any) => cycleIds.has(c._id?.toString() ?? ''))
+        : allActive;
+    } catch { /* return empty causes on any error */ }
 
     return { cycle, causes, userVotes };
   }
