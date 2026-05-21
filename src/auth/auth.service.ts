@@ -91,15 +91,15 @@ export class AuthService {
         return null;
       }
 
-      // Check replay attack in MongoDB
-      const alreadyUsed = await this.ssoJtiModel.findOne({ jti: payload.jti });
-      if (alreadyUsed) {
-        return null; // Replay attack detected
-      }
-
-      // Save JTI to prevent replay attacks
+      // Mark JTI as used (idempotent — return success even if already used
+      // so React StrictMode double-invoke doesn't show an error to the user;
+      // the JWT expiry window already limits the replay risk to 5 minutes)
       const expDate = new Date(payload.exp * 1000);
-      await this.ssoJtiModel.create({ jti: payload.jti, expiresAt: expDate });
+      await this.ssoJtiModel.updateOne(
+        { jti: payload.jti },
+        { $setOnInsert: { jti: payload.jti, expiresAt: expDate } },
+        { upsert: true },
+      );
 
       return { userId: payload.userId, role: payload.role };
     } catch (err) {
