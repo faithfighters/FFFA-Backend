@@ -129,12 +129,19 @@ export class AuthController {
   @Get('sso')
   async exchangeSsoToken(
     @Query('token') token: string,
-    @Res({ passthrough: true }) res: Response,
+    @Query('redirect') redirectUrl: string,
+    @Res() res: Response,
   ) {
     const payload = await this.authService.consumeSsoToken(token);
-    if (!payload) throw new UnauthorizedException('Invalid or expired SSO token.');
+    if (!payload) {
+      // Redirect to admin login with error if a redirect URL was given
+      const adminUrl = process.env.ADMIN_URL || 'https://stage-admin.faithfightersforamerica.com';
+      return (res as any).redirect(`${adminUrl}/login?error=sso_expired`);
+    }
     const jwt = this.authService.signToken(payload.userId, payload.role);
     this.authService.setSessionCookie(res, jwt);
-    return { success: true };
+    // Redirect directly to admin dashboard — no intermediate loading page
+    const destination = redirectUrl || (process.env.ADMIN_URL || 'https://stage-admin.faithfightersforamerica.com') + '/admin';
+    return (res as any).redirect(destination);
   }
 }
