@@ -6,6 +6,7 @@ import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
+import { PLAN_CONFIG } from '../common/plan-config';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -55,8 +56,7 @@ export class AuthController {
 
     // Auto-fix: if user has a plan but votes were never set (e.g. admin-created, OAuth)
     if (user.plan && user.votesTotal === 0) {
-      const planKey = user.plan as keyof typeof (await import('../common/plan-config')).PLAN_CONFIG;
-      const { PLAN_CONFIG } = await import('../common/plan-config');
+      const planKey = user.plan as keyof typeof PLAN_CONFIG;
       if (PLAN_CONFIG[planKey]) {
         user = await this.usersService.update(user._id.toString(), {
           votesRemaining: PLAN_CONFIG[planKey].votes,
@@ -82,7 +82,6 @@ export class AuthController {
 
     // Auto-fix: if user has a plan but votes were never set
     if (user.plan && user.votesTotal === 0) {
-      const { PLAN_CONFIG } = await import('../common/plan-config');
       const planKey = user.plan as keyof typeof PLAN_CONFIG;
       if (PLAN_CONFIG[planKey]) {
         user = await this.usersService.update(user._id.toString(), {
