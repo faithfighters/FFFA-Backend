@@ -33,15 +33,30 @@ export class AdminController {
   ) {}
 
   // ── Members ──────────────────────────────────────────────
-  @ApiOperation({ summary: 'List all members with subscription info' })
+  @ApiOperation({ summary: 'List all members with subscription info and actual votes cast' })
   @Get('members')
   async getMembers() {
-    const users = await this.usersService.findAll();
-    const subs = await this.subsService.findAll();
-    const members = users.map(u => ({
-      ...this.usersService.sanitize(u),
-      subscription: subs.find(s => s.userId.toString() === u._id.toString()) || null,
-    }));
+    const [users, subs, allVotes] = await Promise.all([
+      this.usersService.findAll(),
+      this.subsService.findAll(),
+      this.votesService.findAll(),
+    ]);
+
+    // Only include members — exclude admins and moderators from the leaderboard
+    const members = users
+      .filter(u => u.role === 'member')
+      .map(u => {
+        const uid = u._id.toString();
+        const votesCast = allVotes
+          .filter(v => v.userId.toString() === uid)
+          .reduce((sum, v) => sum + v.count, 0);
+        return {
+          ...this.usersService.sanitize(u),
+          subscription: subs.find(s => s.userId.toString() === uid) || null,
+          votesCast,
+        };
+      });
+
     return { members };
   }
 

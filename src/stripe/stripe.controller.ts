@@ -49,7 +49,7 @@ export class StripeController {
       line_items: [{ price: STRIPE_PRICE_IDS[plan], quantity: 1 }],
       metadata: { userId: user._id.toString(), plan },
       success_url: `${frontendUrl}/dashboard?checkout=success`,
-      cancel_url: `${frontendUrl}/join`,
+      cancel_url: `${frontendUrl}/subscribe?plan=${plan}&cancelled=true`,
     });
     return { url: session.url };
   }
