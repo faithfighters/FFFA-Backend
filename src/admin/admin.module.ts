@@ -11,10 +11,15 @@ import { CharitiesModule } from '../charities/charities.module';
 import { VotesModule } from '../votes/votes.module';
 import { TranscriptionModule } from '../transcription/transcription.module';
 import { AdminSettings, AdminSettingsSchema } from './schemas/admin-settings.schema';
+import { StripeModule } from '../stripe/stripe.module';
+import { PaymentRecord, PaymentRecordSchema } from '../stripe/schemas/payment-record.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: AdminSettings.name, schema: AdminSettingsSchema }]),
+    MongooseModule.forFeature([
+      { name: AdminSettings.name, schema: AdminSettingsSchema },
+      { name: PaymentRecord.name, schema: PaymentRecordSchema },
+    ]),
     UsersModule,
     VideosModule,
     VotingCyclesModule,
@@ -24,6 +29,7 @@ import { AdminSettings, AdminSettingsSchema } from './schemas/admin-settings.sch
     CharitiesModule,
     VotesModule,
     TranscriptionModule,
+    StripeModule,
   ],
   controllers: [AdminController],
 })

@@ -2,6 +2,8 @@ import {
   Controller, Get, Post, Patch, Delete, Param, Body, Query, Req,
   UseGuards, BadRequestException, NotFoundException,
 } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 import { UsersService } from '../users/users.service';
 import { VideosService } from '../videos/videos.service';
@@ -17,6 +19,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { Types } from 'mongoose';
+import { PaymentRecord, PaymentRecordDocument } from '../stripe/schemas/payment-record.schema';
 
 @ApiTags('Admin')
 @ApiCookieAuth('fffa_session')
@@ -24,6 +27,7 @@ import { Types } from 'mongoose';
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminController {
   constructor(
+    @InjectModel(PaymentRecord.name) private readonly paymentModel: Model<PaymentRecordDocument>,
     private readonly usersService: UsersService,
     private readonly videosService: VideosService,
     private readonly cyclesService: VotingCyclesService,
@@ -398,30 +402,79 @@ export class AdminController {
   @ApiOperation({ summary: 'Platform analytics — members, revenue, subscriptions' })
   @Get('analytics')
   async getAnalytics() {
-    const [subs, videos, payouts, users] = await Promise.all([
+    const [subs, videos, payouts, users, causes, votes, allPayments] = await Promise.all([
       this.subsService.findAll(),
       this.videosService.findAll(),
       this.payoutsService.findAll(),
       this.usersService.findAll(),
+      this.causesService.findAll(),
+      this.votesService.findAll(),
+      this.paymentModel.find().lean(),
     ]);
+
     const activeSubs = subs.filter(s => s.status === 'active');
-    const revenue = activeSubs.reduce((sum, s) => sum + s.amount, 0);
+
+    // Use PLAN_CONFIG price as source of truth when DB amount is 0/missing
+    const resolveAmount = (plan: string, stored: number) =>
+      stored > 0 ? stored : (PLAN_CONFIG[plan as keyof typeof PLAN_CONFIG]?.price ?? 0);
+
+    // MRR = sum of active subscription prices
+    const mrr = activeSubs.reduce((sum, s) => sum + resolveAmount(s.plan, s.amount), 0);
+
+    // All-time revenue: prefer real payment records, fall back to summing all subscription prices
+    const allTimeRevenue = allPayments.length > 0
+      ? allPayments.reduce((sum, p) => sum + p.amount, 0)
+      : subs.reduce((sum, s) => sum + resolveAmount(s.plan, s.amount), 0);
+
+    const paymentRecordsSynced = allPayments.length > 0;
     const totalPaidOut = payouts.filter(p => p.status === 'paid').reduce((s, p) => s + p.amount, 0);
+    const activeCauses = causes.filter(c => c.status === 'active').length;
+    const totalVotes = votes.reduce((sum, v) => sum + (v.count || 1), 0);
+    const members = users.filter(u => u.role === 'member');
 
     const planBreakdown: Record<string, number> = {};
     for (const key of Object.keys(PLAN_CONFIG)) {
       planBreakdown[key] = activeSubs.filter(s => s.plan === key).length;
     }
 
+    // Revenue by month for chart (last 6 months)
+    const now = new Date();
+    const revenueByMonth: { month: string; revenue: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+      const monthRevenue = allPayments
+        .filter(p => {
+          const pd = new Date(p.paidAt);
+          return pd.getFullYear() === d.getFullYear() && pd.getMonth() === d.getMonth();
+        })
+        .reduce((sum, p) => sum + p.amount, 0);
+      revenueByMonth.push({ month: label, revenue: monthRevenue });
+    }
+
     return {
+      // Flat fields for dashboard page
+      totalMembers: members.length,
+      totalRevenue: allTimeRevenue,
+      monthlyRevenue: mrr,
+      paymentRecordsSynced,                // false = still using subscription fallback
+      toCharity: allTimeRevenue * 0.8,
+      toPlatform: allTimeRevenue * 0.2,
+      activeCauses,
+      totalVotes,
+      revenueByMonth,
+      // Nested fields used by reports/other pages
       overview: {
-        totalMembers: users.filter(u => u.role === 'member').length,
+        totalMembers: members.length,
         totalAdmins: users.filter(u => u.role === 'admin').length,
-        totalMonthlyRevenue: revenue,
-        totalToCharity: revenue * 0.8,
-        totalToPlatform: revenue * 0.2,
+        totalMonthlyRevenue: mrr,
+        totalAllTimeRevenue: allTimeRevenue,
+        totalToCharity: allTimeRevenue * 0.8,
+        totalToPlatform: allTimeRevenue * 0.2,
         totalPaidOut,
         activeSubscriptions: activeSubs.length,
+        activeCauses,
+        totalVotes,
       },
       videoStats: {
         total: videos.length,
@@ -435,9 +488,9 @@ export class AdminController {
         processingPayouts: payouts.filter(p => p.status === 'processing').length,
         totalPayouts: payouts.length,
       },
-      revenue: { monthly: revenue, toCharity: revenue * 0.8, toPlatform: revenue * 0.2 },
+      revenue: { monthly: mrr, allTime: allTimeRevenue, toCharity: allTimeRevenue * 0.8, toPlatform: allTimeRevenue * 0.2 },
       planBreakdown,
-      members: { total: users.filter(u => u.role === 'member').length, active: activeSubs.length },
+      members: { total: members.length, active: activeSubs.length },
     };
   }
 
@@ -553,16 +606,18 @@ export class AdminController {
     };
   }
 
-  @ApiOperation({ summary: 'Personal activities stream of the logged-in user' })
+  @ApiOperation({ summary: 'Platform-wide activity stream for admin view' })
   @Get('activities')
-  async getActivities(@Req() req: any) {
-    const currentUserId = req.user.userId;
+  async getActivities() {
     const [votes, videos, users, causes] = await Promise.all([
       this.votesService.findAll(),
       this.videosService.findAll(),
       this.usersService.findAll(),
       this.causesService.findAll(),
     ]);
+
+    const userMap = new Map(users.map(u => [u._id.toString(), u.name]));
+    const causeMap = new Map(causes.map(c => [c._id.toString(), c.name]));
 
     const activitiesList: {
       id: string;
@@ -573,66 +628,62 @@ export class AdminController {
       timestamp: string;
     }[] = [];
 
-    // 1. Current user signup log
-    const currentUser = users.find(u => u._id.toString() === currentUserId);
-    if (currentUser) {
-      activitiesList.push({
-        id: `signup-${currentUser._id}`,
-        type: 'signup',
-        title: 'Account Created',
-        description: `You joined FaithFighters as an ${currentUser.role === 'admin' ? 'Administrator' : currentUser.role === 'moderator' ? 'Moderator' : 'Member'}.`,
-        user: 'You',
-        timestamp: (currentUser as any).createdAt?.toISOString() || new Date().toISOString(),
-      });
-    }
-
-    // 2. Video submissions and moderation actions by current user
-    for (const v of videos) {
-      // Your submissions
-      if (v.authorId && v.authorId.toString() === currentUserId) {
+    // 1. All member signups
+    for (const u of users) {
+      if (u.role === 'member') {
         activitiesList.push({
-          id: `submission-${v._id}`,
-          type: 'submission',
-          title: 'Campaign Reel Uploaded',
-          description: `You uploaded a campaign reel: "${v.title}" in support of cause "${v.causeTag}".`,
-          user: 'You',
-          timestamp: (v as any).createdAt?.toISOString() || new Date().toISOString(),
+          id: `signup-${u._id}`,
+          type: 'signup',
+          title: 'New Member Joined',
+          description: `${u.name} (${u.email}) joined the platform${u.plan ? ` on the ${u.plan.replace('_', ' ')} plan` : ''}.`,
+          user: u.name,
+          timestamp: (u as any).createdAt?.toISOString?.() ?? (u as any).joinedAt ?? new Date().toISOString(),
         });
       }
+    }
 
-      // Your moderation reviews
-      if (v.moderatedBy && v.moderatedBy.toString() === currentUserId) {
+    // 2. All video submissions
+    for (const v of videos) {
+      activitiesList.push({
+        id: `submission-${v._id}`,
+        type: 'submission',
+        title: 'Campaign Reel Uploaded',
+        description: `${v.authorName} submitted "${v.title}" for cause "${v.causeTag}".`,
+        user: v.authorName,
+        timestamp: (v as any).createdAt?.toISOString?.() ?? new Date().toISOString(),
+      });
+
+      // Moderation events
+      if (v.moderatedBy && (v.status === 'approved' || v.status === 'rejected')) {
+        const moderatorName = userMap.get(v.moderatedBy.toString()) ?? v.moderatedByName ?? 'Admin';
         activitiesList.push({
           id: `moderation-${v._id}`,
           type: 'moderation',
           title: `Campaign ${v.status === 'approved' ? 'Approved' : 'Rejected'}`,
-          description: `You moderated and ${v.status} the campaign reel "${v.title}" submitted by ${v.authorName}.`,
-          user: 'You',
-          timestamp: v.moderatedAt || (v as any).updatedAt?.toISOString() || new Date().toISOString(),
+          description: `${moderatorName} ${v.status} "${v.title}" by ${v.authorName}${v.status === 'rejected' && v.rejectionReason ? `: ${v.rejectionReason}` : ''}.`,
+          user: moderatorName,
+          timestamp: v.moderatedAt ?? (v as any).updatedAt?.toISOString?.() ?? new Date().toISOString(),
         });
       }
     }
 
-    // 3. Votes cast by current user
+    // 3. All votes cast
     for (const v of votes) {
-      if (v.userId && v.userId.toString() === currentUserId) {
-        const c = causes.find(cause => cause._id.toString() === v.causeId.toString());
-        const causeName = c?.name || 'Cause';
-        
-        activitiesList.push({
-          id: `vote-${v._id}`,
-          type: 'vote',
-          title: 'Votes Submitted',
-          description: `You cast ${v.count} votes in support of cause "${causeName}".`,
-          user: 'You',
-          timestamp: (v as any).createdAt?.toISOString() || new Date().toISOString(),
-        });
-      }
+      const voterName = userMap.get(v.userId?.toString()) ?? 'Member';
+      const causeName = causeMap.get(v.causeId?.toString()) ?? 'a cause';
+      activitiesList.push({
+        id: `vote-${v._id}`,
+        type: 'vote',
+        title: 'Votes Cast',
+        description: `${voterName} cast ${v.count} vote${v.count !== 1 ? 's' : ''} for "${causeName}".`,
+        user: voterName,
+        timestamp: (v as any).createdAt?.toISOString?.() ?? new Date().toISOString(),
+      });
     }
 
-    // Sort by timestamp descending
+    // Sort newest first
     activitiesList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-    return { activities: activitiesList.slice(0, 50) };
+    return { activities: activitiesList.slice(0, 100) };
   }
 }

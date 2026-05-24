@@ -39,9 +39,9 @@ export class SubscriptionsController {
     return { subscription: sub || null };
   }
 
-  @ApiOperation({ summary: 'Start a Stripe checkout session for a plan' })
+  @ApiOperation({ summary: 'Start a Stripe checkout or upgrade an existing subscription' })
   @ApiBody({ schema: { properties: { plan: { type: 'string' } }, required: ['plan'] } })
-  @ApiResponse({ status: 201, description: 'Stripe checkout URL' })
+  @ApiResponse({ status: 201, description: 'Stripe checkout URL or { upgraded: true }' })
   @Post('checkout')
   async checkout(@Body() body: { plan: string }, @Req() req: any) {
     if (!stripe) throw new BadRequestException('Stripe is not configured.');
@@ -51,16 +51,59 @@ export class SubscriptionsController {
     const user = await this.usersService.findById(req.user.userId);
     if (!user) throw new NotFoundException('User not found.');
 
+    // Guard: already on this plan and active
+    const existingSub = await this.subsService.findActiveByUser(req.user.userId);
+    if (existingSub && existingSub.plan === plan && existingSub.status === 'active') {
+      throw new BadRequestException('You are already subscribed to this plan.');
+    }
+
+    // Upgrade / downgrade in-place via Stripe if user already has an active subscription
+    if (existingSub?.stripeSubscriptionId && existingSub.status === 'active' && stripe) {
+      const stripeSub = await stripe.subscriptions.retrieve(existingSub.stripeSubscriptionId);
+      const itemId = stripeSub.items.data[0]?.id;
+      if (itemId) {
+        await stripe.subscriptions.update(existingSub.stripeSubscriptionId, {
+          items: [{ id: itemId, price: STRIPE_PRICE_IDS[plan] }],
+          proration_behavior: 'always_invoice',
+          metadata: { userId: user._id.toString(), plan },
+        });
+
+        // Sync DB immediately
+        const newVotes = PLAN_CONFIG[plan as keyof typeof PLAN_CONFIG]?.votes ?? 0;
+        await this.subsService.update(existingSub._id.toString(), {
+          plan: plan as any,
+          amount: PLAN_CONFIG[plan as keyof typeof PLAN_CONFIG]?.price ?? existingSub.amount,
+        });
+        await this.usersService.update(req.user.userId, {
+          plan: plan as any,
+          votesTotal: newVotes,
+          votesRemaining: newVotes,
+        } as any);
+
+        return { upgraded: true, plan };
+      }
+    }
+
+    // No existing subscription — create a new Stripe Checkout session
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
-    const session = await stripe.checkout.sessions.create({
+
+    // Re-use existing Stripe customer if available so card is pre-filled
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'subscription',
       payment_method_types: ['card'],
-      customer_email: user.email,
       line_items: [{ price: STRIPE_PRICE_IDS[plan], quantity: 1 }],
       metadata: { userId: user._id.toString(), plan },
       success_url: `${frontendUrl}/dashboard?checkout=success`,
       cancel_url: `${frontendUrl}/dashboard/subscription?plan=${plan}&cancelled=true`,
-    });
+    };
+
+    if (user.stripeCustomerId) {
+      sessionParams.customer = user.stripeCustomerId;
+    } else {
+      sessionParams.customer_email = user.email;
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
     return { url: session.url };
   }
 

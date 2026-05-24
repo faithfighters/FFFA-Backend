@@ -1,8 +1,10 @@
 import {
-  Controller, Post, Req, Res, Body, UseGuards,
+  Controller, Post, Get, Req, Res, Body, UseGuards,
   BadRequestException, NotFoundException, RawBodyRequest,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { UsersService } from '../users/users.service';
@@ -11,6 +13,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { Types } from 'mongoose';
+import { PaymentRecord, PaymentRecordDocument } from './schemas/payment-record.schema';
 
 const stripeKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeKey
@@ -27,6 +30,7 @@ const STRIPE_PRICE_IDS: Record<string, string> = {
 @Controller('stripe')
 export class StripeController {
   constructor(
+    @InjectModel(PaymentRecord.name) private readonly paymentModel: Model<PaymentRecordDocument>,
     private readonly usersService: UsersService,
     private readonly subsService: SubscriptionsService,
     private readonly notifService: NotificationsService,
@@ -116,6 +120,33 @@ export class StripeController {
       }
     }
 
+    if (event.type === 'invoice.payment_succeeded') {
+      const invoice = event.data.object as Stripe.Invoice;
+      // Only record subscription renewal/payment invoices (not $0 setup invoices)
+      const amountDollars = (invoice.amount_paid ?? 0) / 100;
+      const subId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+      if (amountDollars > 0 && invoice.id) {
+        // Find the plan from the subscription record
+        const sub = subId ? await this.subsService.findByStripeSubscriptionId(subId) : null;
+        const plan = sub?.plan ?? 'unknown';
+        const userId = sub ? (sub as any).userId?.toString() : null;
+        try {
+          await this.paymentModel.create({
+            stripeInvoiceId: invoice.id,
+            stripeCustomerId: typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id ?? '',
+            stripeSubscriptionId: subId ?? '',
+            userId: userId ?? '',
+            amount: amountDollars,
+            plan,
+            paidAt: new Date(invoice.status_transitions?.paid_at ? invoice.status_transitions.paid_at * 1000 : Date.now()).toISOString(),
+            status: 'succeeded',
+          });
+        } catch {
+          // Duplicate key = already recorded, ignore
+        }
+      }
+    }
+
     if (event.type === 'customer.subscription.deleted') {
       const sub = event.data.object as Stripe.Subscription;
       const found = await this.subsService.findByStripeSubscriptionId(sub.id);
@@ -123,6 +154,55 @@ export class StripeController {
     }
 
     return res.json({ received: true });
+  }
+
+  @Post('backfill-payments')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Admin: backfill all historical Stripe invoices into payment_records' })
+  async backfillPayments(@Req() req: any) {
+    if (!stripe) throw new BadRequestException('Stripe is not configured.');
+
+    let inserted = 0;
+    let skipped = 0;
+    let cursor: string | undefined;
+
+    do {
+      const invoices: Stripe.ApiList<Stripe.Invoice> = await stripe.invoices.list({
+        limit: 100,
+        status: 'paid',
+        ...(cursor ? { starting_after: cursor } : {}),
+      });
+
+      for (const invoice of invoices.data) {
+        const amountDollars = (invoice.amount_paid ?? 0) / 100;
+        if (amountDollars <= 0 || !invoice.id) { skipped++; continue; }
+
+        const subId = typeof invoice.subscription === 'string' ? invoice.subscription : (invoice.subscription as any)?.id;
+        const sub = subId ? await this.subsService.findByStripeSubscriptionId(subId) : null;
+        const plan = sub?.plan ?? 'unknown';
+        const userId = sub ? (sub as any).userId?.toString() : '';
+
+        try {
+          await this.paymentModel.create({
+            stripeInvoiceId: invoice.id,
+            stripeCustomerId: typeof invoice.customer === 'string' ? invoice.customer : (invoice.customer as any)?.id ?? '',
+            stripeSubscriptionId: subId ?? '',
+            userId,
+            amount: amountDollars,
+            plan,
+            paidAt: new Date(invoice.status_transitions?.paid_at ? invoice.status_transitions.paid_at * 1000 : Date.now()).toISOString(),
+            status: 'succeeded',
+          });
+          inserted++;
+        } catch {
+          skipped++; // duplicate
+        }
+      }
+
+      cursor = invoices.has_more ? invoices.data[invoices.data.length - 1]?.id : undefined;
+    } while (cursor);
+
+    return { inserted, skipped, total: inserted + skipped };
   }
 
   @Post('sync')
