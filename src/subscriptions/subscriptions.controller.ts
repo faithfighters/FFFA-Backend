@@ -107,6 +107,48 @@ export class SubscriptionsController {
     return { url: session.url };
   }
 
+  @ApiOperation({ summary: 'One-time vote top-up via Stripe checkout' })
+  @ApiBody({ schema: { properties: { votes: { type: 'number' }, price: { type: 'number' }, label: { type: 'string' } }, required: ['votes', 'price'] } })
+  @Post('buy-votes')
+  async buyVotes(@Body() body: { votes: number; price: number; label?: string }, @Req() req: any) {
+    if (!stripe) throw new BadRequestException('Stripe is not configured.');
+    const { votes, price, label } = body;
+    if (!votes || votes < 1 || !price || price <= 0) throw new BadRequestException('Invalid votes or price.');
+
+    const user = await this.usersService.findById(req.user.userId);
+    if (!user) throw new NotFoundException('User not found.');
+
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+
+    const sessionParams: any = {
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          unit_amount: Math.round(price * 100),
+          product_data: {
+            name: label ?? `${votes} Donation Vote${votes > 1 ? 's' : ''}`,
+            description: `${votes} extra donation vote${votes > 1 ? 's' : ''} added to your FFFA account.`,
+          },
+        },
+        quantity: 1,
+      }],
+      metadata: { userId: user._id.toString(), votes: String(votes), type: 'vote_topup' },
+      success_url: `${frontendUrl}/dashboard/subscription?votes_added=${votes}`,
+      cancel_url: `${frontendUrl}/dashboard/subscription`,
+    };
+
+    if (user.stripeCustomerId) {
+      sessionParams.customer = user.stripeCustomerId;
+    } else {
+      sessionParams.customer_email = user.email;
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    return { url: session.url };
+  }
+
   @ApiOperation({ summary: 'Cancel the current user subscription' })
   @ApiResponse({ status: 200, description: 'Subscription cancelled' })
   @Delete()

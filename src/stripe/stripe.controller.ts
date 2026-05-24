@@ -75,7 +75,21 @@ export class StripeController {
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
-      const { userId, plan } = (session.metadata || {}) as { userId: string; plan: string };
+      const { userId, plan, votes, type } = (session.metadata || {}) as { userId: string; plan: string; votes: string; type: string };
+
+      // ── Vote top-up (one-time payment) ──
+      if (type === 'vote_topup' && userId && votes) {
+        const votesToAdd = parseInt(votes, 10);
+        const existingUser = await this.usersService.findById(userId);
+        if (existingUser && !(existingUser.syncedSessionIds || []).includes(session.id)) {
+          await this.usersService.update(userId, {
+            votesRemaining: (existingUser.votesRemaining ?? 0) + votesToAdd,
+            votesTotal: (existingUser.votesTotal ?? 0) + votesToAdd,
+            $push: { syncedSessionIds: session.id } as any,
+          } as any);
+        }
+        return res.json({ received: true });
+      }
       if (userId && plan) {
         const planKey = plan as keyof typeof PLAN_CONFIG;
         const existingUser = await this.usersService.findById(userId);
