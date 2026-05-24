@@ -103,6 +103,10 @@ export class Video {
   @Prop()
   moderationNote: string;
 
+  // ── Featured ───────────────────────────────────────────
+  @Prop({ default: false })
+  isFeatured: boolean;
+
   // ── Reporting System ───────────────────────────────────
   @Prop({ default: false })
   isReported: boolean;

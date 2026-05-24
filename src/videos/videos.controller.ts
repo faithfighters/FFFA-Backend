@@ -18,8 +18,8 @@ export class VideosController {
     private readonly transcriptionService: TranscriptionService,
   ) {}
 
-  /** Public — approved videos only */
-  @ApiOperation({ summary: 'List approved videos', description: 'Optionally filter by causeTag' })
+  /** Public — approved videos only, featured video first */
+  @ApiOperation({ summary: 'List approved videos', description: 'Optionally filter by causeTag. Featured video is always first.' })
   @ApiQuery({ name: 'causeTag', required: false, description: 'Filter by cause tag' })
   @ApiResponse({ status: 200, description: 'List of approved videos' })
   @Get()
@@ -27,7 +27,12 @@ export class VideosController {
     const filter: Record<string, any> = { status: 'approved' };
     if (causeTag) filter.causeTag = causeTag;
     const videos = await this.videosService.findAll(filter);
-    return { videos };
+    // Featured video always comes first
+    const sorted = [
+      ...videos.filter(v => (v as any).isFeatured),
+      ...videos.filter(v => !(v as any).isFeatured),
+    ];
+    return { videos: sorted };
   }
 
   /** Public — single approved video */

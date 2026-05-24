@@ -126,6 +126,22 @@ export class AdminController {
     return { videos };
   }
 
+  @ApiOperation({ summary: 'Set a video as the featured video (clears any previously featured video)' })
+  @ApiParam({ name: 'id' })
+  @Patch('videos/:id/feature')
+  async featureVideo(@Param('id') id: string) {
+    const video = await this.videosService.findById(id);
+    if (!video) throw new NotFoundException('Video not found.');
+    if (video.status !== 'approved') throw new BadRequestException('Only approved videos can be featured.');
+    // Clear existing featured video
+    const currentlyFeatured = await this.videosService.findAll({ isFeatured: true });
+    for (const v of currentlyFeatured) {
+      await this.videosService.update((v as any).id, { isFeatured: false } as any);
+    }
+    const updated = await this.videosService.update(id, { isFeatured: true } as any);
+    return { video: updated };
+  }
+
   @ApiOperation({ summary: 'Update video status or report status' })
   @ApiParam({ name: 'id' })
   @Patch('videos/:id')
