@@ -11,6 +11,10 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
+  // Fail fast if critical secrets are missing
+  if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET environment variable must be set.');
+  if (!process.env.STRIPE_WEBHOOK_SECRET) throw new Error('STRIPE_WEBHOOK_SECRET environment variable must be set.');
+
   const app = await NestFactory.create(AppModule, {
     rawBody: true, // needed for Stripe webhook signature verification
   });

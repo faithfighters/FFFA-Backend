@@ -63,6 +63,11 @@ export class CausesController {
     const { name, description, category, goalAmount, image } = body;
     if (!name || !description || !category || !goalAmount)
       throw new BadRequestException('name, description, category and goalAmount are required.');
+    const parsedGoal = Number(goalAmount);
+    if (!Number.isFinite(parsedGoal) || parsedGoal <= 0 || parsedGoal > 10_000_000)
+      throw new BadRequestException('goalAmount must be a positive number up to 10,000,000.');
+    if (image && !/^https?:\/\//i.test(image))
+      throw new BadRequestException('image must be a valid https URL.');
 
     const user = await this.usersService.findById(req.user.userId);
     // Admins create causes as active; members submit for moderation

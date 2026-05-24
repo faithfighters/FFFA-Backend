@@ -23,17 +23,19 @@ export class AuthController {
   @ApiResponse({ status: 409, description: 'Email already registered' })
   @Post('register')
   async register(
-    @Body() body: { name: string; email: string; password: string; plan: string },
+    @Body() body: { name: string; email: string; password: string; plan?: string },
     @Res({ passthrough: true }) res: Response,
   ) {
     const { name, email, password, plan } = body;
-    if (!name || !email || !password || !plan)
-      throw new (await import('@nestjs/common')).BadRequestException('All fields are required.');
+    if (!name || !email || !password)
+      throw new (await import('@nestjs/common')).BadRequestException('Name, email and password are required.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      throw new (await import('@nestjs/common')).BadRequestException('Invalid email address.');
 
     const user = await this.authService.register(name, email, password, plan);
     const token = this.authService.signToken(user._id.toString(), user.role);
     this.authService.setSessionCookie(res, token);
-    this.emailService.sendWelcome(user.email, user.name, plan).catch(() => {}); // fire-and-forget
+    if (plan) this.emailService.sendWelcome(user.email, user.name, plan).catch(() => {});
     return { user: this.usersService.sanitize(user) };
   }
 
@@ -132,16 +134,25 @@ export class AuthController {
     @Query('redirect') redirectUrl: string,
     @Res() res: Response,
   ) {
+    const adminUrl = process.env.ADMIN_URL || 'https://stage-admin.faithfightersforamerica.com';
+    const allowedRedirectOrigins = [
+      adminUrl,
+      'http://localhost:3001',
+      'http://localhost:3000',
+      ...(process.env.FRONTEND_URL || '').split(',').map(o => o.trim()),
+    ].filter(Boolean);
+
+    // Validate redirect URL against allowlist to prevent open redirect
+    const safeRedirect = redirectUrl && allowedRedirectOrigins.some(o => redirectUrl.startsWith(o))
+      ? redirectUrl
+      : `${adminUrl}/admin`;
+
     const payload = await this.authService.consumeSsoToken(token);
     if (!payload) {
-      // Redirect to admin login with error if a redirect URL was given
-      const adminUrl = process.env.ADMIN_URL || 'https://stage-admin.faithfightersforamerica.com';
       return (res as any).redirect(`${adminUrl}/login?error=sso_expired`);
     }
     const jwt = this.authService.signToken(payload.userId, payload.role);
     this.authService.setSessionCookie(res, jwt);
-    // Redirect directly to admin dashboard — no intermediate loading page
-    const destination = redirectUrl || (process.env.ADMIN_URL || 'https://stage-admin.faithfightersforamerica.com') + '/admin';
-    return (res as any).redirect(destination);
+    return (res as any).redirect(safeRedirect);
   }
 }

@@ -17,8 +17,8 @@ export class AuthService {
     @InjectModel(SsoJti.name) private readonly ssoJtiModel: Model<SsoJtiDocument>,
   ) {}
 
-  async register(name: string, email: string, password: string, plan: string) {
-    if (!VALID_PLANS.includes(plan as any))
+  async register(name: string, email: string, password: string, plan?: string) {
+    if (plan && !VALID_PLANS.includes(plan as any))
       throw new BadRequestException('Invalid membership plan.');
     if (password.length < 8)
       throw new BadRequestException('Password must be at least 8 characters.');
@@ -26,19 +26,23 @@ export class AuthService {
     const existing = await this.usersService.findByEmail(email);
     if (existing) throw new ConflictException('An account with this email already exists.');
 
-    const planKey = plan as keyof typeof PLAN_CONFIG;
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await this.usersService.create({
+    const createData: any = {
       name: name.trim(),
       email: email.toLowerCase().trim(),
       passwordHash,
       role: 'member',
-      plan: planKey,
-      votesRemaining: PLAN_CONFIG[planKey].votes,
-      votesTotal: PLAN_CONFIG[planKey].votes,
-    });
+    };
 
+    if (plan) {
+      const planKey = plan as keyof typeof PLAN_CONFIG;
+      createData.plan = planKey;
+      createData.votesRemaining = PLAN_CONFIG[planKey].votes;
+      createData.votesTotal = PLAN_CONFIG[planKey].votes;
+    }
+
+    const user = await this.usersService.create(createData);
     return user;
   }
 
@@ -66,7 +70,12 @@ export class AuthService {
   }
 
   clearSessionCookie(res: Response): void {
-    res.clearCookie('session');
+    res.clearCookie('session', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
   }
 
   async generateSsoToken(userId: string, role: string): Promise<string> {
@@ -81,7 +90,7 @@ export class AuthService {
       jti,
     };
 
-    return this.jwtService.sign(payload, { expiresIn: '5m' });
+    return this.jwtService.sign(payload, { expiresIn: '60s' });
   }
 
   async consumeSsoToken(token: string): Promise<{ userId: string; role: string } | null> {
@@ -91,15 +100,14 @@ export class AuthService {
         return null;
       }
 
-      // Mark JTI as used (idempotent — return success even if already used
-      // so React StrictMode double-invoke doesn't show an error to the user;
-      // the JWT expiry window already limits the replay risk to 5 minutes)
+      // Consume JTI — only the first caller wins; replay is rejected
       const expDate = new Date(payload.exp * 1000);
-      await this.ssoJtiModel.updateOne(
+      const result = await this.ssoJtiModel.updateOne(
         { jti: payload.jti },
         { $setOnInsert: { jti: payload.jti, expiresAt: expDate } },
         { upsert: true },
       );
+      if (result.upsertedCount === 0) return null; // already used
 
       return { userId: payload.userId, role: payload.role };
     } catch (err) {

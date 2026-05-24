@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
 import { AdminController } from './admin.controller';
 import { UsersModule } from '../users/users.module';
 import { VideosModule } from '../videos/videos.module';
@@ -8,9 +9,12 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { CausesModule } from '../causes/causes.module';
 import { CharitiesModule } from '../charities/charities.module';
 import { VotesModule } from '../votes/votes.module';
+import { TranscriptionModule } from '../transcription/transcription.module';
+import { AdminSettings, AdminSettingsSchema } from './schemas/admin-settings.schema';
 
 @Module({
   imports: [
+    MongooseModule.forFeature([{ name: AdminSettings.name, schema: AdminSettingsSchema }]),
     UsersModule,
     VideosModule,
     VotingCyclesModule,
@@ -19,6 +23,7 @@ import { VotesModule } from '../votes/votes.module';
     CausesModule,
     CharitiesModule,
     VotesModule,
+    TranscriptionModule,
   ],
   controllers: [AdminController],
 })

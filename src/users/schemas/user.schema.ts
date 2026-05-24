@@ -41,6 +41,17 @@ export class User {
 
   @Prop()
   stripeSubscriptionId: string;
+
+  /** Session IDs already synced — prevents vote inflation from repeated /sync calls */
+  @Prop({ type: [String], default: [] })
+  syncedSessionIds: string[];
+
+  @Prop()
+  image: string;
+
+  @Prop()
+  joinedAt: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+UserSchema.index({ stripeCustomerId: 1 });

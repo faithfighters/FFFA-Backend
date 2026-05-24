@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { UsersService } from '../users/users.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { Types } from 'mongoose';
@@ -28,6 +29,7 @@ export class StripeController {
   constructor(
     private readonly usersService: UsersService,
     private readonly subsService: SubscriptionsService,
+    private readonly notifService: NotificationsService,
   ) {}
 
   @Post('checkout')
@@ -72,13 +74,25 @@ export class StripeController {
       const { userId, plan } = (session.metadata || {}) as { userId: string; plan: string };
       if (userId && plan) {
         const planKey = plan as keyof typeof PLAN_CONFIG;
+        const existingUser = await this.usersService.findById(userId);
+        // Skip if user not found or session already processed (idempotency)
+        if (!existingUser || (existingUser.syncedSessionIds || []).includes(session.id)) {
+          return res.json({ received: true });
+        }
+
+        const addedVotes = PLAN_CONFIG[planKey].votes;
+        const alreadyOnPlan = existingUser.plan === planKey;
+        const newVotesTotal = alreadyOnPlan ? (existingUser.votesTotal ?? 0) + addedVotes : addedVotes;
+        const newVotesRemaining = alreadyOnPlan ? (existingUser.votesRemaining ?? 0) + addedVotes : addedVotes;
+
         await this.usersService.update(userId, {
           plan: planKey,
-          votesRemaining: PLAN_CONFIG[planKey].votes,
-          votesTotal: PLAN_CONFIG[planKey].votes,
+          votesRemaining: newVotesRemaining,
+          votesTotal: newVotesTotal,
           stripeCustomerId: session.customer as string,
           stripeSubscriptionId: session.subscription as string,
-        });
+          $push: { syncedSessionIds: session.id } as any,
+        } as any);
 
         const existing = await this.subsService.findByUserId(userId);
         if (existing) {
@@ -109,6 +123,89 @@ export class StripeController {
     }
 
     return res.json({ received: true });
+  }
+
+  @Post('sync')
+  @UseGuards(JwtAuthGuard)
+  async syncSubscription(@Req() req: any) {
+    if (!stripe) throw new BadRequestException('Stripe is not configured.');
+    const user = await this.usersService.findById(req.user.userId);
+    if (!user) throw new NotFoundException('User not found.');
+
+    // Search Stripe sessions for this user — paginate until found or exhausted
+    const uid = user._id.toString();
+    let completed: Stripe.Checkout.Session | undefined;
+    let lastId: string | undefined;
+
+    outer: for (let page = 0; page < 10; page++) {
+      const sessions = await stripe.checkout.sessions.list({
+        limit: 100,
+        ...(lastId ? { starting_after: lastId } : {}),
+      });
+      for (const s of sessions.data) {
+        if (s.status === 'complete' && s.metadata?.userId === uid && s.metadata?.plan) {
+          completed = s;
+          break outer;
+        }
+      }
+      if (!sessions.has_more) break;
+      lastId = sessions.data[sessions.data.length - 1]?.id;
+    }
+
+    if (!completed || !completed.metadata?.plan) {
+      return { synced: false, message: 'No completed checkout found for this user.' };
+    }
+
+    // Idempotency: refuse to sync the same Stripe session twice
+    if ((user.syncedSessionIds || []).includes(completed.id)) {
+      return { synced: false, message: 'This session has already been synced.' };
+    }
+
+    const planKey = completed.metadata.plan as keyof typeof PLAN_CONFIG;
+    const addedVotes = PLAN_CONFIG[planKey].votes;
+    const alreadyOnPlan = user.plan === planKey;
+
+    const newVotesTotal = alreadyOnPlan ? (user.votesTotal ?? 0) + addedVotes : addedVotes;
+    const newVotesRemaining = alreadyOnPlan ? (user.votesRemaining ?? 0) + addedVotes : addedVotes;
+
+    await this.usersService.update(user._id.toString(), {
+      plan: planKey,
+      votesRemaining: newVotesRemaining,
+      votesTotal: newVotesTotal,
+      stripeCustomerId: completed.customer as string,
+      stripeSubscriptionId: completed.subscription as string,
+      $push: { syncedSessionIds: completed.id } as any,
+    } as any);
+
+    const existing = await this.subsService.findByUserId(user._id.toString());
+    if (existing) {
+      await this.subsService.update(existing._id.toString(), {
+        plan: planKey,
+        amount: PLAN_CONFIG[planKey].price,
+        status: 'active',
+        stripeSubscriptionId: completed.subscription as string,
+      });
+    } else {
+      await this.subsService.create({
+        userId: user._id as any,
+        plan: planKey,
+        amount: PLAN_CONFIG[planKey].price,
+        status: 'active',
+        startDate: new Date().toISOString(),
+        nextBillingDate: new Date(Date.now() + 30 * 86400000).toISOString(),
+        stripeSubscriptionId: completed.subscription as string,
+      });
+    }
+
+    this.notifService.create({
+      userId: user._id.toString(),
+      type: 'votes_added',
+      title: '🗳️ Votes added to your account!',
+      message: `${addedVotes} donation vote${addedVotes !== 1 ? 's' : ''} have been added for the ${PLAN_CONFIG[planKey].name} plan.`,
+      link: '/dashboard/vote',
+    }).catch(() => {});
+
+    return { synced: true, plan: planKey, votes: PLAN_CONFIG[planKey].votes };
   }
 
   @Post('portal')

@@ -75,6 +75,16 @@ export class Video {
   @Prop()
   submitterEmail: string;
 
+  // ── Transcription ───────────────────────────────────────
+  @Prop({ default: '' })
+  transcript: string;
+
+  @Prop({ enum: ['none', 'pending', 'done', 'failed'], default: 'none' })
+  transcriptionStatus: string;
+
+  @Prop({ default: '' })
+  transcriptionJobId: string;
+
   // ── Moderation audit trail ──────────────────────────────
   @Prop({ type: Types.ObjectId, ref: 'User' })
   moderatedBy: Types.ObjectId;

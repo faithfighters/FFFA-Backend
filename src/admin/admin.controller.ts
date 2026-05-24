@@ -11,8 +11,10 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CausesService } from '../causes/causes.service';
 import { CharitiesService } from '../charities/charities.service';
 import { VotesService } from '../votes/votes.service';
+import { TranscriptionService } from '../transcription/transcription.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { Types } from 'mongoose';
 
@@ -30,7 +32,33 @@ export class AdminController {
     private readonly causesService: CausesService,
     private readonly charitiesService: CharitiesService,
     private readonly votesService: VotesService,
+    private readonly notifService: NotificationsService,
+    private readonly transcriptionService: TranscriptionService,
   ) {}
+
+  // ── Blocked Words ────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Get blocked words list' })
+  @ApiResponse({ status: 200, description: 'Array of blocked words' })
+  @Get('blocked-words')
+  async getBlockedWords() {
+    return { blockedWords: await this.transcriptionService.getBlockedWords() };
+  }
+
+  @ApiOperation({ summary: 'Add a blocked word' })
+  @ApiBody({ schema: { properties: { word: { type: 'string' } }, required: ['word'] } })
+  @Post('blocked-words')
+  async addBlockedWord(@Body() body: { word: string }) {
+    if (!body.word?.trim()) throw new BadRequestException('word is required.');
+    return { blockedWords: await this.transcriptionService.addBlockedWord(body.word) };
+  }
+
+  @ApiOperation({ summary: 'Remove a blocked word' })
+  @ApiParam({ name: 'word', description: 'Word to remove' })
+  @Delete('blocked-words/:word')
+  async removeBlockedWord(@Param('word') word: string) {
+    return { blockedWords: await this.transcriptionService.removeBlockedWord(word) };
+  }
 
   // ── Members ──────────────────────────────────────────────
   @ApiOperation({ summary: 'List all members with subscription info and actual votes cast' })
@@ -64,7 +92,19 @@ export class AdminController {
   @ApiParam({ name: 'id' })
   @Patch('members/:id')
   async updateMember(@Param('id') id: string, @Body() body: { role?: string; plan?: string }) {
-    const updated = await this.usersService.update(id, body as any);
+    const allowedRoles = ['member', 'moderator', 'admin'];
+    const allowedPlans = ['faith_builder', 'faith_hero', 'faith_fighter'];
+    const updates: Record<string, string> = {};
+    if (body.role !== undefined) {
+      if (!allowedRoles.includes(body.role)) throw new BadRequestException('Invalid role.');
+      updates.role = body.role;
+    }
+    if (body.plan !== undefined) {
+      if (!allowedPlans.includes(body.plan)) throw new BadRequestException('Invalid plan.');
+      updates.plan = body.plan;
+    }
+    if (Object.keys(updates).length === 0) throw new BadRequestException('No valid fields to update.');
+    const updated = await this.usersService.update(id, updates as any);
     if (!updated) throw new NotFoundException('User not found.');
     return { user: this.usersService.sanitize(updated) };
   }
@@ -137,7 +177,20 @@ export class AdminController {
   }
 
   @Patch('cycles/:id')
-  async updateCycle(@Param('id') id: string, @Body() updates: any) {
+  async updateCycle(
+    @Param('id') id: string,
+    @Body() body: { name?: string; startDate?: string; endDate?: string; status?: string; causes?: string[] },
+  ) {
+    const allowedStatuses = ['active', 'closed', 'upcoming'];
+    const updates: Record<string, any> = {};
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.startDate !== undefined) updates.startDate = body.startDate;
+    if (body.endDate !== undefined) updates.endDate = body.endDate;
+    if (body.status !== undefined) {
+      if (!allowedStatuses.includes(body.status)) throw new BadRequestException('Invalid status.');
+      updates.status = body.status;
+    }
+    if (body.causes !== undefined) updates.causes = body.causes.map(id => new Types.ObjectId(id));
     const updated = await this.cyclesService.update(id, updates);
     if (!updated) throw new NotFoundException('Cycle not found.');
     return { cycle: updated };
@@ -180,9 +233,30 @@ export class AdminController {
 
     const closed = await this.cyclesService.closeCycle(id, charityPool, voteAggregates);
 
-    // Mark participating causes as 'funded'
+    // Mark participating causes as 'funded' + notify submitters
     for (const entry of closed.fundDistribution) {
-      await this.causesService.update(entry.causeId, { status: 'funded' } as any);
+      const cause = await this.causesService.update(entry.causeId, { status: 'funded' } as any);
+      if (cause?.submittedBy) {
+        this.notifService.create({
+          userId: cause.submittedBy.toString(),
+          type: 'cause_funded',
+          title: '💰 Your cause received funding!',
+          message: `"${cause.name}" was funded $${entry.amount.toFixed(2)} from this voting cycle.`,
+          link: '/dashboard/activities',
+        }).catch(() => {});
+      }
+    }
+
+    // Notify all members who participated in this cycle
+    const voterIds = [...new Set(allVotes.map(v => v.userId.toString()))];
+    for (const voterId of voterIds) {
+      this.notifService.create({
+        userId: voterId,
+        type: 'cycle_closed',
+        title: '📊 Voting cycle has ended',
+        message: `"${cycle.name}" is now closed. $${charityPool.toFixed(2)} is being distributed to funded causes.`,
+        link: '/dashboard/leaderboard',
+      }).catch(() => {});
     }
 
     return {

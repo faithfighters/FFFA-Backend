@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { VideosService } from './videos.service';
 import { UsersService } from '../users/users.service';
+import { TranscriptionService } from '../transcription/transcription.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ModeratorGuard } from '../auth/moderator.guard';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
@@ -14,6 +15,7 @@ export class VideosController {
   constructor(
     private readonly videosService: VideosService,
     private readonly usersService: UsersService,
+    private readonly transcriptionService: TranscriptionService,
   ) {}
 
   /** Public — approved videos only */
@@ -89,6 +91,12 @@ export class VideosController {
       submitterEmail: body.submitterEmail,
       paymentDestination: body.paymentDestination,
     });
+    // Trigger transcription asynchronously — fire and forget
+    this.transcriptionService.triggerTranscription(
+      (video as any)._id?.toString() ?? (video as any).id,
+      videoUrl,
+    );
+
     return { video };
   }
 
@@ -137,23 +145,33 @@ export class VideosController {
     return { video: updated };
   }
 
-  /** Report a video submission */
+  /** Report a video submission — requires authentication to prevent spam */
   @ApiOperation({ summary: 'Report a video submission' })
+  @ApiCookieAuth('fffa_session')
+  @UseGuards(JwtAuthGuard)
   @Post(':id/report')
   async reportVideo(
     @Param('id') id: string,
     @Body() body: { reason?: string },
+    @Req() req: any,
   ) {
     const video = await this.videosService.findById(id);
     if (!video) throw new NotFoundException('Video not found.');
 
+    // Prevent duplicate reports from the same user
+    const reportedBy: string[] = (video as any).reportedBy || [];
+    if (reportedBy.includes(req.user.userId)) {
+      return { success: true, message: 'Already reported.' };
+    }
+
     const updated = await this.videosService.update(id, {
       isReported: true,
       reportCount: (video.reportCount || 0) + 1,
-      reportReasons: body.reason 
-        ? [...(video.reportReasons || []), body.reason] 
-        : (video.reportReasons || []).length > 0 
-          ? video.reportReasons 
+      reportedBy: [...reportedBy, req.user.userId],
+      reportReasons: body.reason
+        ? [...(video.reportReasons || []), body.reason]
+        : (video.reportReasons || []).length > 0
+          ? video.reportReasons
           : ['Inappropriate content'],
     } as any);
 

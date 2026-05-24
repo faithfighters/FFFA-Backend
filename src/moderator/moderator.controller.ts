@@ -8,6 +8,7 @@ import { VideosService } from '../videos/videos.service';
 import { CausesService } from '../causes/causes.service';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 
 /**
@@ -24,6 +25,7 @@ export class ModeratorController {
     private readonly causesService: CausesService,
     private readonly usersService: UsersService,
     private readonly emailService: EmailService,
+    private readonly notifService: NotificationsService,
   ) {}
 
   // ── Review Queue ─────────────────────────────────────────
@@ -123,8 +125,22 @@ export class ModeratorController {
     if (submitter) {
       if (status === 'approved') {
         this.emailService.sendVideoApproved(submitter.email, submitter.name, video.title).catch(() => {});
+        this.notifService.create({
+          userId: submitter._id.toString(),
+          type: 'video_approved',
+          title: '🎉 Your video was approved!',
+          message: `"${video.title}" is now live on the platform.`,
+          link: '/dashboard/activities',
+        }).catch(() => {});
       } else {
         this.emailService.sendVideoRejected(submitter.email, submitter.name, video.title, rejectionReason!).catch(() => {});
+        this.notifService.create({
+          userId: submitter._id.toString(),
+          type: 'video_rejected',
+          title: 'Video not approved',
+          message: `"${video.title}" was not approved. Reason: ${rejectionReason}`,
+          link: '/dashboard/submit',
+        }).catch(() => {});
       }
     }
 
@@ -211,8 +227,22 @@ export class ModeratorController {
     if (submitter) {
       if (status === 'active') {
         this.emailService.sendCampaignApproved(submitter.email, submitter.name, cause.name).catch(() => {});
+        this.notifService.create({
+          userId: submitter._id.toString(),
+          type: 'cause_approved',
+          title: '✅ Your campaign was approved!',
+          message: `"${cause.name}" is now active and can receive votes.`,
+          link: '/dashboard/vote',
+        }).catch(() => {});
       } else {
         this.emailService.sendCampaignRejected(submitter.email, submitter.name, cause.name, rejectionReason!).catch(() => {});
+        this.notifService.create({
+          userId: submitter._id.toString(),
+          type: 'video_rejected',
+          title: 'Campaign not approved',
+          message: `"${cause.name}" was not approved. Reason: ${rejectionReason}`,
+          link: '/dashboard/submit',
+        }).catch(() => {});
       }
     }
 
