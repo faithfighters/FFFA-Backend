@@ -21,6 +21,8 @@ const STRIPE_PRICE_IDS: Record<string, string> = {
   faith_fighter: process.env.STRIPE_PRICE_FAITH_FIGHTER || '',
 };
 
+const WELCOME_KIT_PRICE_ID = process.env.STRIPE_PRICE_WELCOME_KIT || '';
+
 @ApiTags('Subscription')
 @ApiCookieAuth('fffa_session')
 @UseGuards(JwtAuthGuard)
@@ -87,11 +89,35 @@ export class SubscriptionsController {
     // No existing subscription — create a new Stripe Checkout session
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
 
+    const planPrice = PLAN_CONFIG[plan as keyof typeof PLAN_CONFIG]?.price ?? 30;
+
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
+      { price: STRIPE_PRICE_IDS[plan], quantity: 1 },
+    ];
+    // Add one-time welcome kit for first-time subscribers at the same price as the plan
+    if (!user.plan) {
+      if (WELCOME_KIT_PRICE_ID) {
+        lineItems.push({ price: WELCOME_KIT_PRICE_ID, quantity: 1 });
+      } else {
+        lineItems.push({
+          price_data: {
+            currency: 'usd',
+            unit_amount: Math.round(planPrice * 100),
+            product_data: {
+              name: 'Faith Builder Welcome Kit',
+              description: 'One-time Welcome Kit + Setup Fee / Your Faith Fighters welcome kit, delivered to you as part of your membership.',
+            },
+          },
+          quantity: 1,
+        });
+      }
+    }
+
     // Re-use existing Stripe customer if available so card is pre-filled
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'subscription',
       payment_method_types: ['card'],
-      line_items: [{ price: STRIPE_PRICE_IDS[plan], quantity: 1 }],
+      line_items: lineItems,
       metadata: { userId: user._id.toString(), plan },
       success_url: `${frontendUrl}/dashboard?checkout=success`,
       cancel_url: `${frontendUrl}/dashboard/subscription?plan=${plan}&cancelled=true`,

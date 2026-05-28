@@ -64,7 +64,7 @@ export class UploadController {
     body: {
       contentType: string;
       fileSizeBytes: number;
-      folder: 'videos' | 'thumbnails';
+      folder: 'videos' | 'thumbnails' | 'images';
     },
   ) {
     const { contentType, fileSizeBytes, folder } = body;
@@ -73,8 +73,8 @@ export class UploadController {
       throw new BadRequestException('contentType, fileSizeBytes, and folder are required.');
     }
 
-    if (!['videos', 'thumbnails'].includes(folder)) {
-      throw new BadRequestException('folder must be "videos" or "thumbnails".');
+    if (!['videos', 'thumbnails', 'images'].includes(folder)) {
+      throw new BadRequestException('folder must be "videos", "thumbnails", or "images".');
     }
 
     const result = await this.uploadService.getPresignedUploadUrl(

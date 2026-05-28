@@ -26,6 +26,8 @@ const STRIPE_PRICE_IDS: Record<string, string> = {
   faith_fighter: process.env.STRIPE_PRICE_FAITH_FIGHTER || '',
 };
 
+const WELCOME_KIT_PRICE_ID = process.env.STRIPE_PRICE_WELCOME_KIT || '';
+
 @ApiTags('Stripe')
 @Controller('stripe')
 export class StripeController {
@@ -48,11 +50,37 @@ export class StripeController {
     if (!user) throw new NotFoundException('User not found.');
 
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+
+    const planPrice = PLAN_CONFIG[plan as keyof typeof PLAN_CONFIG]?.price ?? 30;
+
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
+      { price: STRIPE_PRICE_IDS[plan], quantity: 1 },
+    ];
+    // Add one-time welcome kit for first-time subscribers at the same price as the plan
+    if (!user.plan) {
+      const welcomeKitPriceId = WELCOME_KIT_PRICE_ID;
+      if (welcomeKitPriceId) {
+        lineItems.push({ price: welcomeKitPriceId, quantity: 1 });
+      } else {
+        lineItems.push({
+          price_data: {
+            currency: 'usd',
+            unit_amount: Math.round(planPrice * 100),
+            product_data: {
+              name: 'Faith Builder Welcome Kit',
+              description: 'One-time Welcome Kit + Setup Fee / Your Faith Fighters welcome kit, delivered to you as part of your membership.',
+            },
+          },
+          quantity: 1,
+        });
+      }
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
       customer_email: user.email,
-      line_items: [{ price: STRIPE_PRICE_IDS[plan], quantity: 1 }],
+      line_items: lineItems,
       metadata: { userId: user._id.toString(), plan },
       success_url: `${frontendUrl}/dashboard?checkout=success`,
       cancel_url: `${frontendUrl}/subscribe?plan=${plan}&cancelled=true`,
@@ -127,13 +155,16 @@ export class StripeController {
             stripeSubscriptionId: session.subscription as string,
           });
         } else {
+          const startDate = new Date().toISOString();
+          const endDate = new Date(Date.now() + 30 * 86400000).toISOString();
           await this.subsService.create({
             userId: new Types.ObjectId(userId) as any,
             plan: planKey,
             amount: PLAN_CONFIG[planKey].price,
             status: 'active',
-            startDate: new Date().toISOString(),
-            nextBillingDate: new Date(Date.now() + 30 * 86400000).toISOString(),
+            startDate,
+            endDate,
+            nextBillingDate: endDate,
             stripeSubscriptionId: session.subscription as string,
           });
         }
@@ -223,89 +254,6 @@ export class StripeController {
     } while (cursor);
 
     return { inserted, skipped, total: inserted + skipped };
-  }
-
-  @Post('sync')
-  @UseGuards(JwtAuthGuard)
-  async syncSubscription(@Req() req: any) {
-    if (!stripe) throw new BadRequestException('Stripe is not configured.');
-    const user = await this.usersService.findById(req.user.userId);
-    if (!user) throw new NotFoundException('User not found.');
-
-    // Search Stripe sessions for this user — paginate until found or exhausted
-    const uid = user._id.toString();
-    let completed: Stripe.Checkout.Session | undefined;
-    let lastId: string | undefined;
-
-    outer: for (let page = 0; page < 10; page++) {
-      const sessions = await stripe.checkout.sessions.list({
-        limit: 100,
-        ...(lastId ? { starting_after: lastId } : {}),
-      });
-      for (const s of sessions.data) {
-        if (s.status === 'complete' && s.metadata?.userId === uid && s.metadata?.plan) {
-          completed = s;
-          break outer;
-        }
-      }
-      if (!sessions.has_more) break;
-      lastId = sessions.data[sessions.data.length - 1]?.id;
-    }
-
-    if (!completed || !completed.metadata?.plan) {
-      return { synced: false, message: 'No completed checkout found for this user.' };
-    }
-
-    // Idempotency: refuse to sync the same Stripe session twice
-    if ((user.syncedSessionIds || []).includes(completed.id)) {
-      return { synced: false, message: 'This session has already been synced.' };
-    }
-
-    const planKey = completed.metadata.plan as keyof typeof PLAN_CONFIG;
-    const addedVotes = PLAN_CONFIG[planKey].votes;
-    const alreadyOnPlan = user.plan === planKey;
-
-    const newVotesTotal = alreadyOnPlan ? (user.votesTotal ?? 0) + addedVotes : addedVotes;
-    const newVotesRemaining = alreadyOnPlan ? (user.votesRemaining ?? 0) + addedVotes : addedVotes;
-
-    await this.usersService.update(user._id.toString(), {
-      plan: planKey,
-      votesRemaining: newVotesRemaining,
-      votesTotal: newVotesTotal,
-      stripeCustomerId: completed.customer as string,
-      stripeSubscriptionId: completed.subscription as string,
-      $push: { syncedSessionIds: completed.id } as any,
-    } as any);
-
-    const existing = await this.subsService.findByUserId(user._id.toString());
-    if (existing) {
-      await this.subsService.update(existing._id.toString(), {
-        plan: planKey,
-        amount: PLAN_CONFIG[planKey].price,
-        status: 'active',
-        stripeSubscriptionId: completed.subscription as string,
-      });
-    } else {
-      await this.subsService.create({
-        userId: user._id as any,
-        plan: planKey,
-        amount: PLAN_CONFIG[planKey].price,
-        status: 'active',
-        startDate: new Date().toISOString(),
-        nextBillingDate: new Date(Date.now() + 30 * 86400000).toISOString(),
-        stripeSubscriptionId: completed.subscription as string,
-      });
-    }
-
-    this.notifService.create({
-      userId: user._id.toString(),
-      type: 'votes_added',
-      title: '🗳️ Votes added to your account!',
-      message: `${addedVotes} donation vote${(addedVotes as number) !== 1 ? 's' : ''} have been added for the ${PLAN_CONFIG[planKey].name} plan.`,
-      link: '/dashboard/vote',
-    }).catch(() => {});
-
-    return { synced: true, plan: planKey, votes: PLAN_CONFIG[planKey].votes };
   }
 
   @Post('portal')

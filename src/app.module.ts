@@ -18,6 +18,7 @@ import { ModeratorModule } from './moderator/moderator.module';
 import { UploadModule } from './upload/upload.module';
 import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     UploadModule,
     EmailModule,
     NotificationsModule,
+    EventsModule,
   ],
 })
 export class AppModule {}

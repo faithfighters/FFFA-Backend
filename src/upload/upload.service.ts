@@ -44,7 +44,7 @@ export class UploadService {
   async getPresignedUploadUrl(
     contentType: string,
     fileSizeBytes: number,
-    folder: 'videos' | 'thumbnails',
+    folder: 'videos' | 'thumbnails' | 'images',
   ): Promise<{ uploadUrl: string; publicUrl: string; key: string }> {
     const isVideo = folder === 'videos';
     const allowed = isVideo ? ALLOWED_VIDEO_TYPES : ALLOWED_IMAGE_TYPES;

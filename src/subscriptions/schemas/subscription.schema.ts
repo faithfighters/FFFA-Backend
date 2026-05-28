@@ -30,6 +30,9 @@ export class Subscription {
   @Prop({ required: true })
   startDate: string;
 
+  @Prop()
+  endDate: string;
+
   @Prop({ required: true })
   nextBillingDate: string;
 

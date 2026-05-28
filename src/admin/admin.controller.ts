@@ -113,6 +113,22 @@ export class AdminController {
     return { user: this.usersService.sanitize(updated) };
   }
 
+  // ── Subscription endDate backfill ───────────────────────
+  @ApiOperation({ summary: 'Backfill endDate for all subscriptions missing it (startDate + 30 days)' })
+  @Post('subscriptions/backfill-end-dates')
+  async backfillEndDates() {
+    const all = await this.subsService.findAll();
+    let updated = 0;
+    for (const sub of all) {
+      if (!(sub as any).endDate && sub.startDate) {
+        const end = new Date(new Date(sub.startDate).getTime() + 30 * 86400000).toISOString();
+        await this.subsService.update(sub._id.toString(), { endDate: end } as any);
+        updated++;
+      }
+    }
+    return { updated, total: all.length };
+  }
+
   // ── Videos ───────────────────────────────────────────────
   @ApiOperation({ summary: 'List all video submissions (all statuses, optional reported filter)' })
   @ApiQuery({ name: 'status', required: false })
