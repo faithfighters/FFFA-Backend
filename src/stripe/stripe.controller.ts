@@ -301,7 +301,7 @@ export class StripeController {
       userId: user._id.toString(),
       type: 'votes_added',
       title: '🗳️ Votes added to your account!',
-      message: `${addedVotes} donation vote${addedVotes !== 1 ? 's' : ''} have been added for the ${PLAN_CONFIG[planKey].name} plan.`,
+      message: `${addedVotes} donation vote${(addedVotes as number) !== 1 ? 's' : ''} have been added for the ${PLAN_CONFIG[planKey].name} plan.`,
       link: '/dashboard/vote',
     }).catch(() => {});
 
