@@ -56,6 +56,18 @@ export class VotesController {
     return this.castSingle(causeId, Number(count), req.user.userId);
   }
 
+  /** Returns true if the user has already cast a vote today in this cycle. */
+  private async hasVotedToday(userId: string, cycleId: string): Promise<boolean> {
+    const existing = await this.votesService.findByUserAndCycle(userId, cycleId);
+    if (existing.length === 0) return false;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return existing.some(v => {
+      const created = (v as any).createdAt;
+      return created && new Date(created) >= todayStart;
+    });
+  }
+
   private async castBulk(allocation: Record<string, number>, userId: string) {
     const allEntries = Object.entries(allocation);
     const positiveEntries = allEntries.filter(([, count]) => count > 0);
@@ -71,6 +83,13 @@ export class VotesController {
 
     const user = await this.usersService.findById(userId);
     if (!user) throw new NotFoundException('User not found.');
+
+    const boosterRemaining = (user as any).boosterVotesRemaining ?? 0;
+    const usingBooster = boosterRemaining > 0;
+
+    // Daily limit applies only to regular plan votes — booster votes bypass it
+    if (positiveEntries.length > 0 && !usingBooster && await this.hasVotedToday(userId, cycle._id.toString()))
+      throw new BadRequestException('You can only cast 1 vote per day. Come back tomorrow!');
 
     const planKey = user.plan as keyof typeof PLAN_CONFIG | undefined;
     const planVotes = planKey ? PLAN_CONFIG[planKey].votes : 0;
@@ -130,8 +149,13 @@ export class VotesController {
       });
     }
 
-    const updatedRemaining = Math.max(0, planVotes - (targetTotal + unmentionedVotes));
-    await this.usersService.update(userId, { votesRemaining: updatedRemaining });
+    if (usingBooster) {
+      const newBooster = Math.max(0, boosterRemaining - targetTotal);
+      await this.usersService.update(userId, { boosterVotesRemaining: newBooster } as any);
+    } else {
+      const updatedRemaining = Math.max(0, planVotes - (targetTotal + unmentionedVotes));
+      await this.usersService.update(userId, { votesRemaining: updatedRemaining });
+    }
 
     return { success: true };
   }
@@ -142,6 +166,15 @@ export class VotesController {
     // Vote locking — reject votes once cycle is closed
     if (cycle.status !== 'active')
       throw new BadRequestException('This voting cycle is no longer accepting votes.');
+
+    const user2 = await this.usersService.findById(userId);
+    if (!user2) throw new NotFoundException('User not found.');
+    const boosterRemaining2 = (user2 as any).boosterVotesRemaining ?? 0;
+    const usingBooster2 = boosterRemaining2 > 0;
+
+    // Daily limit applies only when no booster votes available
+    if (!usingBooster2 && await this.hasVotedToday(userId, cycle._id.toString()))
+      throw new BadRequestException('You can only cast 1 vote per day. Come back tomorrow!');
 
     const cause = await this.causesService.findById(causeId);
     if (!cause) throw new NotFoundException('Cause not found.');
@@ -177,9 +210,12 @@ export class VotesController {
       raisedAmount: cause.raisedAmount + perVoteDollars * count,
     });
 
-    // Properly decrement votesRemaining in user's MongoDB record
-    const updatedRemaining = Math.max(0, remaining - count);
-    await this.usersService.update(userId, { votesRemaining: updatedRemaining });
+    if (usingBooster2) {
+      await this.usersService.update(userId, { boosterVotesRemaining: Math.max(0, boosterRemaining2 - count) } as any);
+    } else {
+      const updatedRemaining = Math.max(0, remaining - count);
+      await this.usersService.update(userId, { votesRemaining: updatedRemaining });
+    }
 
     return { success: true };
   }

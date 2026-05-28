@@ -36,6 +36,10 @@ export class User {
   @Prop({ default: 0 })
   votesTotal: number;
 
+  /** Booster votes purchased separately — no daily limit applies */
+  @Prop({ default: 0 })
+  boosterVotesRemaining: number;
+
   @Prop()
   stripeCustomerId: string;
 

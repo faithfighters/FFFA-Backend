@@ -77,16 +77,22 @@ export class StripeController {
       const session = event.data.object as Stripe.Checkout.Session;
       const { userId, plan, votes, type } = (session.metadata || {}) as { userId: string; plan: string; votes: string; type: string };
 
-      // ── Vote top-up (one-time payment) ──
+      // ── Booster vote top-up (one-time payment, no daily limit) ──
       if (type === 'vote_topup' && userId && votes) {
         const votesToAdd = parseInt(votes, 10);
         const existingUser = await this.usersService.findById(userId);
         if (existingUser && !(existingUser.syncedSessionIds || []).includes(session.id)) {
           await this.usersService.update(userId, {
-            votesRemaining: (existingUser.votesRemaining ?? 0) + votesToAdd,
-            votesTotal: (existingUser.votesTotal ?? 0) + votesToAdd,
+            boosterVotesRemaining: ((existingUser as any).boosterVotesRemaining ?? 0) + votesToAdd,
             $push: { syncedSessionIds: session.id } as any,
           } as any);
+          this.notifService.create({
+            userId,
+            type: 'votes_added',
+            title: '⚡ Booster votes added!',
+            message: `${votesToAdd} booster vote${votesToAdd !== 1 ? 's' : ''} added — use them anytime, no daily limit!`,
+            link: '/dashboard/vote',
+          }).catch(() => {});
         }
         return res.json({ received: true });
       }
