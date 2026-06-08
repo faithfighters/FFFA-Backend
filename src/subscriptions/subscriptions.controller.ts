@@ -9,6 +9,7 @@ import { UsersService } from '../users/users.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { Types } from 'mongoose';
+import { getFrontendUrl } from '../common/url-resolver';
 
 const stripeKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeKey
@@ -87,7 +88,7 @@ export class SubscriptionsController {
     }
 
     // No existing subscription — create a new Stripe Checkout session
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+    const frontendUrl = getFrontendUrl();
 
     const planPrice = PLAN_CONFIG[plan as keyof typeof PLAN_CONFIG]?.price ?? 30;
 
@@ -144,7 +145,7 @@ export class SubscriptionsController {
     const user = await this.usersService.findById(req.user.userId);
     if (!user) throw new NotFoundException('User not found.');
 
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+    const frontendUrl = getFrontendUrl();
 
     const sessionParams: any = {
       mode: 'payment',

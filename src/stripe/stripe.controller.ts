@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { Types } from 'mongoose';
 import { PaymentRecord, PaymentRecordDocument } from './schemas/payment-record.schema';
+import { getFrontendUrl } from '../common/url-resolver';
 
 const stripeKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeKey
@@ -49,7 +50,7 @@ export class StripeController {
     const user = await this.usersService.findById(req.user.userId);
     if (!user) throw new NotFoundException('User not found.');
 
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+    const frontendUrl = getFrontendUrl();
 
     const planPrice = PLAN_CONFIG[plan as keyof typeof PLAN_CONFIG]?.price ?? 30;
 
@@ -264,7 +265,7 @@ export class StripeController {
     if (!user?.stripeCustomerId)
       throw new BadRequestException('No Stripe customer found.');
 
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+    const frontendUrl = getFrontendUrl();
     const session = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
       return_url: `${frontendUrl}/dashboard`,
