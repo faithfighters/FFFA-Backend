@@ -30,6 +30,7 @@ export class UsersService {
   sanitize(user: UserDocument) {
     const obj = user.toJSON() as any;
     const { passwordHash, ...safe } = obj;
+    if (!safe.joinedAt && safe.createdAt) safe.joinedAt = safe.createdAt;
     return safe;
   }
 }
