@@ -134,12 +134,13 @@ export class AuthController {
     @Query('redirect') redirectUrl: string,
     @Res() res: Response,
   ) {
-    const adminUrl = process.env.ADMIN_URL || 'https://stage-admin.faithfightersforamerica.com';
+    const adminUrl = process.env.ADMIN_URL;
+    if (!adminUrl) throw new Error('ADMIN_URL environment variable must be set.');
     const allowedRedirectOrigins = [
       adminUrl,
-      'http://localhost:3001',
-      'http://localhost:3000',
       ...(process.env.FRONTEND_URL || '').split(',').map(o => o.trim()),
+      'http://localhost:3000',
+      'http://localhost:3001',
     ].filter(Boolean);
 
     // Validate redirect URL against allowlist to prevent open redirect
