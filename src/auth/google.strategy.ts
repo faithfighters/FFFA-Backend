@@ -2,6 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, VerifyCallback } from 'passport-google-oauth20';
 
+// Stateless store: passes OAuth state through without requiring express-session.
+const statelessStore = {
+  store(_req: any, _options: any, state: any, _meta: any, cb: Function) { cb(null, state); },
+  verify(_req: any, providedState: any, cb: Function) { cb(null, true, providedState); },
+};
+
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor() {
@@ -11,11 +17,11 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:4000/auth/google/callback',
       scope: ['email', 'profile'],
       passReqToCallback: true,
+      store: statelessStore,
     });
   }
 
   authenticate(req: any, options?: any) {
-    // Pass the redirect param through OAuth state so we recover it on callback
     const redirect = req.query?.redirect || '';
     super.authenticate(req, { ...options, state: redirect });
   }
