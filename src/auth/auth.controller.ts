@@ -150,22 +150,29 @@ export class AuthController {
       ? redirectState
       : (process.env.FRONTEND_URL || '').split(',')[0].trim();
 
-    let user = await this.usersService.findByEmail(email);
-    if (!user) {
-      user = await this.usersService.create({
-        name,
-        email,
-        passwordHash: '',
-        image,
-        joinedAt: new Date().toISOString(),
-      });
-    } else if (image && !user.image) {
-      await this.usersService.update(user._id.toString(), { image });
-    }
+    try {
+      let user = await this.usersService.findByEmail(email);
+      if (!user) {
+        // New user via Google — passwordHash is a non-empty placeholder that can never
+        // be used for email/password login (bcrypt.compare will always fail against it).
+        user = await this.usersService.create({
+          name,
+          email,
+          passwordHash: `google_oauth_${Date.now()}`,
+          image,
+          joinedAt: new Date().toISOString(),
+        });
+      } else if (image && !user.image) {
+        await this.usersService.update(user._id.toString(), { image });
+      }
 
-    const jwt = this.authService.signToken(user._id.toString(), user.role);
-    this.authService.setSessionCookie(res, jwt);
-    return (res as any).redirect(safeRedirect);
+      const jwt = this.authService.signToken(user._id.toString(), user.role);
+      this.authService.setSessionCookie(res, jwt);
+      return (res as any).redirect(safeRedirect);
+    } catch (err) {
+      const fallback = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+      return (res as any).redirect(`${fallback}/login?error=oauth_failed`);
+    }
   }
 
   @ApiOperation({ summary: 'Exchange SSO token for a session cookie' })
