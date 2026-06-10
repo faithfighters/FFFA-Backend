@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import { getFrontendUrl } from '../common/url-resolver';
 
 @Injectable()
 export class EmailService {
@@ -44,7 +45,7 @@ export class EmailService {
         <h2 style="color:#db0000;">Welcome, ${name}!</h2>
         <p>You've joined FFFA as a <strong>${planNames[plan] || plan}</strong> member.</p>
         <p>You can now log in, cast your votes, and help direct donations to the causes you care about most.</p>
-        <a href="${process.env.FRONTEND_URL}/dashboard" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
+        <a href="${getFrontendUrl()}/dashboard" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
           Go to My Dashboard →
         </a>
         <p style="margin-top:24px;color:#666;font-size:0.875rem;">
@@ -65,7 +66,7 @@ export class EmailService {
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
         <h2 style="color:#db0000;">Great news, ${name}!</h2>
         <p>Your video <strong>"${videoTitle}"</strong> has been approved and is now live on the platform.</p>
-        <a href="${process.env.FRONTEND_URL}/media" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
+        <a href="${getFrontendUrl()}/media" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
           View on Platform →
         </a>
       </div>
@@ -102,7 +103,7 @@ export class EmailService {
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
         <h2 style="color:#db0000;">Campaign Approved, ${name}!</h2>
         <p>Your campaign <strong>"${causeName}"</strong> has been approved and is now eligible for the next voting cycle.</p>
-        <a href="${process.env.FRONTEND_URL}/leaderboard" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
+        <a href="${getFrontendUrl()}/leaderboard" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
           View Leaderboard →
         </a>
       </div>
@@ -141,7 +142,7 @@ export class EmailService {
           ${causes.map(c => `<li>${c}</li>`).join('')}
         </ul>
         <p>80% of your membership fee will be distributed to these causes based on the final vote tally.</p>
-        <a href="${process.env.FRONTEND_URL}/leaderboard" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
+        <a href="${getFrontendUrl()}/leaderboard" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
           Track the Leaderboard →
         </a>
       </div>
@@ -160,7 +161,7 @@ export class EmailService {
         <h2 style="color:#333;">Hi ${name},</h2>
         <p>Your Faith Fighters For America membership has been cancelled. You'll retain access until the end of your current billing period.</p>
         <p>We're sorry to see you go. If you change your mind, you can rejoin at any time.</p>
-        <a href="${process.env.FRONTEND_URL}/join" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
+        <a href="${getFrontendUrl()}/join" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
           Rejoin FFFA →
         </a>
       </div>

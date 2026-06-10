@@ -140,15 +140,15 @@ export class AuthController {
     };
 
     const allowedOrigins = [
-      ...(process.env.FRONTEND_URL || '').split(',').map(o => o.trim()),
-      process.env.ADMIN_URL || '',
+      ...(process.env.FRONTEND_URL || 'https://stage.faithfightersforamerica.com').split(',').map(o => o.trim()),
+      process.env.ADMIN_URL || 'https://stage.faithfightersforamerica.com',
       'http://localhost:3000',
       'http://localhost:3001',
     ].filter(Boolean);
 
     const safeRedirect = redirectState && allowedOrigins.some(o => redirectState.startsWith(o))
       ? redirectState
-      : (process.env.FRONTEND_URL || '').split(',')[0].trim();
+      : (process.env.FRONTEND_URL || 'https://stage.faithfightersforamerica.com').split(',')[0].trim();
 
     try {
       let user = await this.usersService.findByEmail(email);
@@ -170,7 +170,7 @@ export class AuthController {
       this.authService.setSessionCookie(res, jwt);
       return (res as any).redirect(safeRedirect);
     } catch (err) {
-      const fallback = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+      const fallback = (process.env.FRONTEND_URL || 'https://stage.faithfightersforamerica.com').split(',')[0].trim();
       return (res as any).redirect(`${fallback}/login?error=oauth_failed`);
     }
   }
@@ -184,11 +184,10 @@ export class AuthController {
     @Query('redirect') redirectUrl: string,
     @Res() res: Response,
   ) {
-    const adminUrl = process.env.ADMIN_URL;
-    if (!adminUrl) throw new Error('ADMIN_URL environment variable must be set.');
+    const adminUrl = process.env.ADMIN_URL || 'https://stage.faithfightersforamerica.com';
     const allowedRedirectOrigins = [
       adminUrl,
-      ...(process.env.FRONTEND_URL || '').split(',').map(o => o.trim()),
+      ...(process.env.FRONTEND_URL || 'https://stage.faithfightersforamerica.com').split(',').map(o => o.trim()),
       'http://localhost:3000',
       'http://localhost:3001',
     ].filter(Boolean);

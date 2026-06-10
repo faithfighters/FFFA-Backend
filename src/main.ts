@@ -14,8 +14,6 @@ async function bootstrap() {
   // Fail fast if critical secrets are missing
   if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET environment variable must be set.');
   if (!process.env.STRIPE_WEBHOOK_SECRET) throw new Error('STRIPE_WEBHOOK_SECRET environment variable must be set.');
-  if (!process.env.FRONTEND_URL) throw new Error('FRONTEND_URL environment variable must be set.');
-  if (!process.env.ADMIN_URL) throw new Error('ADMIN_URL environment variable must be set.');
 
   const app = await NestFactory.create(AppModule, {
     rawBody: true, // needed for Stripe webhook signature verification
@@ -23,9 +21,9 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-const allowedOrigins = [
+  const allowedOrigins = [
     // All allowed origins come from env (comma-separated)
-    ...(process.env.FRONTEND_URL || '').split(',').map(o => o.trim()),
+    ...(process.env.FRONTEND_URL || 'https://stage.faithfightersforamerica.com').split(',').map(o => o.trim()),
     // Local development origins
     'http://localhost:3000',
     'http://localhost:3001',
