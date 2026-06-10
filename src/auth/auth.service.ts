@@ -60,20 +60,28 @@ export class AuthService {
     return this.jwtService.sign({ userId, role });
   }
 
+  private cookieDomain(): string | undefined {
+    const env = process.env.NODE_ENV;
+    if (env === 'production' || env === 'staging') return '.faithfightersforamerica.com';
+    return undefined; // localhost — no domain restriction
+  }
+
   setSessionCookie(res: Response, token: string): void {
     res.cookie('session', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV !== 'development',
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      domain: this.cookieDomain(),
     });
   }
 
   clearSessionCookie(res: Response): void {
     res.clearCookie('session', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV !== 'development',
       sameSite: 'lax',
+      domain: this.cookieDomain(),
       path: '/',
     });
   }
