@@ -5,6 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { GoogleStrategy } from './google.strategy';
 import { UsersModule } from '../users/users.module';
 import { EmailModule } from '../email/email.module';
 import { SsoJti, SsoJtiSchema } from './sso-jti.schema';
@@ -21,7 +22,7 @@ import { SsoJti, SsoJtiSchema } from './sso-jti.schema';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, GoogleStrategy],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

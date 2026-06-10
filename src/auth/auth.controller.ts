@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, Req, Res, Query, UseGuards, HttpCode, UnauthorizedException } from '@nestjs/common';
 import { Request, Response } from 'express';
 import * as bcrypt from 'bcryptjs';
+import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
@@ -123,6 +124,48 @@ export class AuthController {
   async generateSsoToken(@Req() req: Request & { user: { userId: string; role: string } }) {
     const token = await this.authService.generateSsoToken(req.user.userId, req.user.role);
     return { token };
+  }
+
+  @ApiOperation({ summary: 'Initiate Google OAuth login' })
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  async googleLogin() { /* redirected by passport */ }
+
+  @ApiOperation({ summary: 'Google OAuth callback — sets session cookie and redirects' })
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  async googleCallback(@Req() req: any, @Res() res: Response) {
+    const { email, name, image, state: redirectState } = req.user as {
+      email: string; name: string; image: string; state: string;
+    };
+
+    const allowedOrigins = [
+      ...(process.env.FRONTEND_URL || '').split(',').map(o => o.trim()),
+      process.env.ADMIN_URL || '',
+      'http://localhost:3000',
+      'http://localhost:3001',
+    ].filter(Boolean);
+
+    const safeRedirect = redirectState && allowedOrigins.some(o => redirectState.startsWith(o))
+      ? redirectState
+      : (process.env.FRONTEND_URL || '').split(',')[0].trim();
+
+    let user = await this.usersService.findByEmail(email);
+    if (!user) {
+      user = await this.usersService.create({
+        name,
+        email,
+        passwordHash: '',
+        image,
+        joinedAt: new Date().toISOString(),
+      });
+    } else if (image && !user.image) {
+      await this.usersService.update(user._id.toString(), { image });
+    }
+
+    const jwt = this.authService.signToken(user._id.toString(), user.role);
+    this.authService.setSessionCookie(res, jwt);
+    return (res as any).redirect(safeRedirect);
   }
 
   @ApiOperation({ summary: 'Exchange SSO token for a session cookie' })
