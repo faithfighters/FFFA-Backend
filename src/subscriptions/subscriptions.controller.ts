@@ -90,12 +90,10 @@ export class SubscriptionsController {
     // No existing subscription — create a new Stripe Checkout session
     const frontendUrl = getFrontendUrl();
 
-    const planPrice = PLAN_CONFIG[plan as keyof typeof PLAN_CONFIG]?.price ?? 30;
-
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       { price: STRIPE_PRICE_IDS[plan], quantity: 1 },
     ];
-    // Add one-time welcome kit for first-time subscribers at the same price as the plan
+    // Add one-time welcome kit ($24.95) for first-time subscribers
     if (!user.plan) {
       if (WELCOME_KIT_PRICE_ID) {
         lineItems.push({ price: WELCOME_KIT_PRICE_ID, quantity: 1 });
@@ -103,10 +101,11 @@ export class SubscriptionsController {
         lineItems.push({
           price_data: {
             currency: 'usd',
-            unit_amount: Math.round(planPrice * 100),
+            unit_amount: 2495,
             product_data: {
               name: 'Faith Builder Welcome Kit',
-              description: 'One-time Welcome Kit + Setup Fee / Your Faith Fighters welcome kit, delivered to you as part of your membership.',
+              description: 'One-time Welcome Kit + Setup Fee / Your Faith Fighters welcome kit, delivered to you as part of your onboarding. This one-time package includes your member items and everything you need to get started.',
+              images: ['https://faithfightersforamerica.com/wp-content/uploads/2025/10/fffa-logo-new-white.png'],
             },
           },
           quantity: 1,
