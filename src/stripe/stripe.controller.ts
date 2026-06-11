@@ -21,11 +21,7 @@ const stripe = stripeKey
   ? new Stripe(stripeKey, { apiVersion: '2025-02-24.acacia' as any })
   : null;
 
-const STRIPE_PRICE_IDS: Record<string, string> = {
-  faith_builder: process.env.STRIPE_PRICE_FAITH_BUILDER || '',
-  faith_hero:    process.env.STRIPE_PRICE_FAITH_HERO    || '',
-  faith_fighter: process.env.STRIPE_PRICE_FAITH_FIGHTER || '',
-};
+const PLAN_PRICE_ID = process.env.STRIPE_PRICE_PLAN || '';
 
 const WELCOME_KIT_PRICE_ID = process.env.STRIPE_PRICE_WELCOME_KIT || '';
 
@@ -44,8 +40,8 @@ export class StripeController {
   async checkout(@Body() body: { plan: string }, @Req() req: any) {
     if (!stripe) throw new BadRequestException('Stripe is not configured.');
     const { plan } = body;
-    if (!plan || !STRIPE_PRICE_IDS[plan])
-      throw new BadRequestException('Invalid plan.');
+    if (!plan || !PLAN_PRICE_ID)
+      throw new BadRequestException('Stripe plan price is not configured.');
 
     const user = await this.usersService.findById(req.user.userId);
     if (!user) throw new NotFoundException('User not found.');
@@ -53,7 +49,7 @@ export class StripeController {
     const frontendUrl = getFrontendUrl();
 
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
-      { price: STRIPE_PRICE_IDS[plan], quantity: 1 },
+      { price: PLAN_PRICE_ID, quantity: 1 },
     ];
     // Add one-time welcome kit ($24.95) for first-time subscribers
     if (!user.plan) {
