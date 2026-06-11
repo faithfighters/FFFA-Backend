@@ -202,7 +202,15 @@ export class StripeController {
     if (event.type === 'customer.subscription.deleted') {
       const sub = event.data.object as Stripe.Subscription;
       const found = await this.subsService.findByStripeSubscriptionId(sub.id);
-      if (found) await this.subsService.update(found._id.toString(), { status: 'cancelled' });
+      if (found) {
+        await this.subsService.update(found._id.toString(), { status: 'cancelled' });
+        await this.usersService.update(found.userId.toString(), {
+          plan: undefined,
+          votesRemaining: 0,
+          votesTotal: 0,
+          boosterVotesRemaining: 0,
+        } as any);
+      }
     }
 
     return res.json({ received: true });

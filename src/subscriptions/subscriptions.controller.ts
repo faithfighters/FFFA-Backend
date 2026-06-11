@@ -145,6 +145,11 @@ export class SubscriptionsController {
     const user = await this.usersService.findById(req.user.userId);
     if (!user) throw new NotFoundException('User not found.');
 
+    const activeSub = await this.subsService.findActiveByUser(req.user.userId);
+    if (!activeSub || activeSub.status !== 'active') {
+      throw new BadRequestException('An active Faith Fighter subscription is required to purchase vote packs.');
+    }
+
     const frontendUrl = getFrontendUrl();
 
     const sessionParams: any = {
@@ -189,11 +194,12 @@ export class SubscriptionsController {
 
     await this.subsService.update(sub._id.toString(), { status: 'cancelled' });
 
-    // Clear plan from user
+    // Clear plan and all votes from user
     await this.usersService.update(req.user.userId, {
       plan: undefined,
       votesRemaining: 0,
       votesTotal: 0,
+      boosterVotesRemaining: 0,
     } as any);
 
     return { success: true };
