@@ -1,7 +1,10 @@
+const _PLAN = { name: 'Faith Fighter', price: 30, votes: 30 } as const;
+
 export const PLAN_CONFIG = {
-  faith_builder: { name: 'Faith Builder', price: 30, votes: 30 },
-  faith_hero:    { name: 'Faith Hero',    price: 30, votes: 30 },
-  faith_fighter: { name: 'Faith Fighter', price: 30, votes: 30 },
+  faith_fighter: _PLAN,
+  // Legacy aliases kept for existing DB records
+  faith_builder: _PLAN,
+  faith_hero:    _PLAN,
 } as const;
 
 export type PlanKey = keyof typeof PLAN_CONFIG;

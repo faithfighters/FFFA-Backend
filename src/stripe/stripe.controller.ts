@@ -82,7 +82,7 @@ export class StripeController {
       line_items: lineItems,
       metadata: { userId: user._id.toString(), plan },
       success_url: `${frontendUrl}/dashboard?checkout=success`,
-      cancel_url: `${frontendUrl}/subscribe?plan=${plan}&cancelled=true`,
+      cancel_url: `${frontendUrl}/dashboard`,
     });
     return { url: session.url };
   }
