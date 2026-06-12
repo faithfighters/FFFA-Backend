@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CausesModule } from './causes/causes.module';
@@ -23,6 +25,9 @@ import { EventsModule } from './events/events.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Global rate limiter — default: 100 req / 60s per IP
+    // Individual endpoints override this with @Throttle()
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     MongooseModule.forRoot(
       process.env.MONGODB_URI || 'mongodb://localhost:27017/faithfighters',
     ),
@@ -44,6 +49,10 @@ import { EventsModule } from './events/events.module';
     EmailModule,
     NotificationsModule,
     EventsModule,
+  ],
+  providers: [
+    // Apply ThrottlerGuard globally — use @SkipThrottle() to opt out per route
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

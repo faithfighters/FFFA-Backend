@@ -2,6 +2,7 @@ import { Controller, Post, Get, Body, Req, Res, Query, UseGuards, HttpCode, Unau
 import { Request, Response } from 'express';
 import * as bcrypt from 'bcryptjs';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
@@ -17,6 +18,8 @@ export class AuthController {
     private readonly emailService: EmailService,
   ) {}
 
+  // 5 registrations per IP per 15 minutes — prevents account creation spam
+  @Throttle({ default: { ttl: 900_000, limit: 5 } })
   @ApiOperation({ summary: 'Register a new member account' })
   @ApiBody({ schema: { properties: { name: { type: 'string' }, email: { type: 'string' }, password: { type: 'string', minLength: 8 }, plan: { type: 'string', enum: ['faith_builder', 'faith_hero', 'faith_fighter'] } }, required: ['name', 'email', 'password', 'plan'] } })
   @ApiResponse({ status: 201, description: 'Account created, session cookie set' })
@@ -40,6 +43,8 @@ export class AuthController {
     return { user: this.usersService.sanitize(user) };
   }
 
+  // 10 attempts per IP per 15 minutes — blocks brute-force while allowing normal use
+  @Throttle({ default: { ttl: 900_000, limit: 10 } })
   @ApiOperation({ summary: 'Login with email and password' })
   @ApiBody({ schema: { properties: { email: { type: 'string' }, password: { type: 'string' } }, required: ['email', 'password'] } })
   @ApiResponse({ status: 200, description: 'Login successful, session cookie set' })
@@ -60,6 +65,7 @@ export class AuthController {
     return { user: this.usersService.sanitize(user) };
   }
 
+  @SkipThrottle()
   @ApiOperation({ summary: 'Get current authenticated user' })
   @ApiCookieAuth('fffa_session')
   @ApiResponse({ status: 200, description: 'Returns current user profile' })
@@ -80,19 +86,30 @@ export class AuthController {
   @Post('update-profile')
   async updateProfile(
     @Req() req: Request & { user: { userId: string } },
-    @Body() body: { name?: string; password?: string; image?: string },
+    @Body() body: { name?: string; password?: string; currentPassword?: string; image?: string },
   ) {
     const updates: any = {};
     if (body.name) {
       updates.name = body.name.trim();
     }
-    if (body.image) {
-      updates.image = body.image.trim();
+    if (body.image !== undefined) {
+      const trimmed = body.image.trim();
+      if (trimmed && !trimmed.startsWith('https://')) {
+        throw new (await import('@nestjs/common')).BadRequestException('Image URL must start with https://.');
+      }
+      updates.image = trimmed;
     }
     if (body.password) {
       if (body.password.length < 8) {
         throw new (await import('@nestjs/common')).BadRequestException('Password must be at least 8 characters long.');
       }
+      if (!body.currentPassword) {
+        throw new (await import('@nestjs/common')).BadRequestException('Current password is required to set a new password.');
+      }
+      const user = await this.usersService.findById(req.user.userId);
+      if (!user) throw new (await import('@nestjs/common')).NotFoundException('User not found.');
+      const valid = await bcrypt.compare(body.currentPassword, user.passwordHash);
+      if (!valid) throw new (await import('@nestjs/common')).UnauthorizedException('Current password is incorrect.');
       updates.passwordHash = await bcrypt.hash(body.password, 12);
     }
     

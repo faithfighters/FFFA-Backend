@@ -49,11 +49,12 @@ export class VotesController {
       return this.castBulk(body.allocation, req.user.userId);
     }
 
-    const { causeId, count } = body;
-    if (!causeId || !count || count < 1)
-      throw new BadRequestException('causeId and count are required.');
+    const { causeId } = body;
+    const count = Math.floor(Number(body.count));
+    if (!causeId || !count || count < 1 || !Number.isFinite(count))
+      throw new BadRequestException('causeId and a positive integer count are required.');
 
-    return this.castSingle(causeId, Number(count), req.user.userId);
+    return this.castSingle(causeId, count, req.user.userId);
   }
 
   /** Returns true if the user has already cast a vote today in this cycle. */
@@ -69,7 +70,11 @@ export class VotesController {
   }
 
   private async castBulk(allocation: Record<string, number>, userId: string) {
-    const allEntries = Object.entries(allocation);
+    const rawEntries = Object.entries(allocation);
+    if (rawEntries.length > 20)
+      throw new BadRequestException('Allocation cannot contain more than 20 causes at once.');
+    // Normalise all counts to integers
+    const allEntries = rawEntries.map(([id, c]) => [id, Math.floor(Number(c))] as [string, number]);
     const positiveEntries = allEntries.filter(([, count]) => count > 0);
     const zeroEntries = allEntries.filter(([, count]) => count === 0);
 
@@ -104,8 +109,13 @@ export class VotesController {
       .filter(v => !mentionedCauses.has(v.causeId.toString()))
       .reduce((s, v) => s + v.count, 0);
 
-    if (targetTotal + unmentionedVotes > planVotes)
-      throw new BadRequestException(`You only have ${planVotes} donation vote(s) for this cycle.`);
+    if (usingBooster) {
+      if (targetTotal > boosterRemaining)
+        throw new BadRequestException(`You only have ${boosterRemaining} booster vote(s) remaining.`);
+    } else {
+      if (targetTotal + unmentionedVotes > planVotes)
+        throw new BadRequestException(`You only have ${planVotes} donation vote(s) for this cycle.`);
+    }
 
     // Clear votes for causes explicitly set to 0 (reallocation)
     for (const [causeId] of zeroEntries) {
@@ -192,8 +202,13 @@ export class VotesController {
     const usedVotes = existingVotes.reduce((s, v) => s + v.count, 0);
     const remaining = planVotes - usedVotes;
 
-    if (count > remaining)
-      throw new BadRequestException(`You only have ${remaining} donation vote(s) remaining.`);
+    if (usingBooster2) {
+      if (count > boosterRemaining2)
+        throw new BadRequestException(`You only have ${boosterRemaining2} booster vote(s) remaining.`);
+    } else {
+      if (count > remaining)
+        throw new BadRequestException(`You only have ${remaining} donation vote(s) remaining.`);
+    }
 
     const alreadyVoted = existingVotes.find(v => v.causeId.toString() === causeId);
     if (alreadyVoted) {

@@ -1,10 +1,11 @@
 import {
-  Controller, Post, Get, Req, Res, Body, UseGuards,
+  Controller, Post, Req, Res, Body, UseGuards,
   BadRequestException, NotFoundException, RawBodyRequest,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { UsersService } from '../users/users.service';
@@ -15,6 +16,7 @@ import { PLAN_CONFIG } from '../common/plan-config';
 import { Types } from 'mongoose';
 import { PaymentRecord, PaymentRecordDocument } from './schemas/payment-record.schema';
 import { getFrontendUrl } from '../common/url-resolver';
+import { StripeSyncService } from './stripe-sync.service';
 
 const stripeKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeKey
@@ -33,7 +35,114 @@ export class StripeController {
     private readonly usersService: UsersService,
     private readonly subsService: SubscriptionsService,
     private readonly notifService: NotificationsService,
+    private readonly syncService: StripeSyncService,
   ) {}
+
+  // Called by the frontend after checkout success redirect to apply the session immediately,
+  // without waiting for the webhook (which can be delayed or misconfigured in some envs).
+  @Post('sync')
+  @UseGuards(JwtAuthGuard)
+  async syncCurrentUser(@Req() req: any) {
+    if (!stripe) return { synced: 0 };
+    const user = await this.usersService.findById(req.user.userId);
+    if (!user) throw new NotFoundException('User not found.');
+    const userId = (user as any)._id.toString();
+
+    // Fetch completed sessions for this user from Stripe
+    let sessionData: Stripe.Checkout.Session[];
+    if (user.stripeCustomerId) {
+      const list = await stripe.checkout.sessions.list({ customer: user.stripeCustomerId, limit: 20 });
+      sessionData = list.data;
+    } else {
+      // No customer ID yet — scan recent sessions and match by metadata.userId or email
+      const list = await stripe.checkout.sessions.list({ limit: 100 });
+      sessionData = list.data.filter(s =>
+        s.metadata?.userId === userId ||
+        s.customer_details?.email?.toLowerCase() === user.email.toLowerCase(),
+      );
+    }
+
+    let synced = 0;
+    for (const session of sessionData) {
+      if (session.status !== 'complete') continue;
+      // Re-fetch user each iteration so syncedSessionIds is always fresh
+      const fresh = await this.usersService.findById(userId);
+      if (!fresh || (fresh.syncedSessionIds || []).includes(session.id)) continue;
+
+      const meta = (session.metadata || {}) as Record<string, string>;
+      if (meta.userId && meta.userId !== userId) continue;
+      const { plan, votes, type } = meta;
+
+      if (type === 'vote_topup' && votes) {
+        const votesToAdd = parseInt(votes, 10);
+        await this.usersService.update(userId, {
+          boosterVotesRemaining: ((fresh as any).boosterVotesRemaining ?? 0) + votesToAdd,
+          $push: { syncedSessionIds: session.id } as any,
+        } as any);
+        this.notifService.create({
+          userId,
+          type: 'votes_added',
+          title: '⚡ Booster votes added!',
+          message: `${votesToAdd} booster vote${votesToAdd !== 1 ? 's' : ''} added — use them anytime, no daily limit!`,
+          link: '/dashboard/vote',
+        }).catch(() => {});
+        synced++;
+        continue;
+      }
+
+      if (!plan) continue;
+      const planKey = plan as keyof typeof PLAN_CONFIG;
+      const addedVotes = PLAN_CONFIG[planKey]?.votes ?? 0;
+      const alreadyOnPlan = fresh.plan === planKey;
+      const newVotesTotal = alreadyOnPlan ? (fresh.votesTotal ?? 0) + addedVotes : addedVotes;
+      const newVotesRemaining = alreadyOnPlan ? (fresh.votesRemaining ?? 0) + addedVotes : addedVotes;
+
+      await this.usersService.update(userId, {
+        plan: planKey,
+        votesRemaining: newVotesRemaining,
+        votesTotal: newVotesTotal,
+        stripeCustomerId: session.customer as string,
+        stripeSubscriptionId: session.subscription as string,
+        $push: { syncedSessionIds: session.id } as any,
+      } as any);
+
+      const existing = await this.subsService.findByUserId(userId);
+      if (existing) {
+        await this.subsService.update(existing._id.toString(), {
+          plan: planKey,
+          amount: PLAN_CONFIG[planKey].price,
+          status: 'active',
+          stripeSubscriptionId: session.subscription as string,
+        });
+      } else {
+        const startDate = new Date().toISOString();
+        const endDate = new Date(Date.now() + 30 * 86400000).toISOString();
+        await this.subsService.create({
+          userId: new Types.ObjectId(userId as string) as any,
+          plan: planKey,
+          amount: PLAN_CONFIG[planKey].price,
+          status: 'active',
+          startDate,
+          endDate,
+          nextBillingDate: endDate,
+          stripeSubscriptionId: session.subscription as string,
+        });
+      }
+
+      const addedVotesNum = addedVotes as number;
+      this.notifService.create({
+        userId,
+        type: 'votes_added',
+        title: '🗳️ Votes added to your account!',
+        message: `${addedVotesNum} donation vote${addedVotesNum !== 1 ? 's' : ''} added for the ${PLAN_CONFIG[planKey].name} plan.`,
+        link: '/dashboard/vote',
+      }).catch(() => {});
+
+      synced++;
+    }
+
+    return { synced };
+  }
 
   @Post('checkout')
   @UseGuards(JwtAuthGuard)
@@ -83,6 +192,7 @@ export class StripeController {
     return { url: session.url };
   }
 
+  @SkipThrottle()
   @Post('webhook')
   async webhook(@Req() req: RawBodyRequest<Request>, @Res() res: Response) {
     if (!stripe) return res.status(503).json({ error: 'Stripe not configured.' });
@@ -210,10 +320,21 @@ export class StripeController {
     return res.json({ received: true });
   }
 
+  @Post('admin-sync')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Admin: run full Stripe session + renewal sync immediately' })
+  async adminSync() {
+    const [synced, renewed] = await Promise.all([
+      this.syncService.syncUnprocessedSessions(),
+      this.syncService.syncRenewals(),
+    ]);
+    return { synced, renewed };
+  }
+
   @Post('backfill-payments')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Admin: backfill all historical Stripe invoices into payment_records' })
-  async backfillPayments(@Req() req: any) {
+  async backfillPayments() {
     if (!stripe) throw new BadRequestException('Stripe is not configured.');
 
     let inserted = 0;

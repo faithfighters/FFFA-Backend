@@ -95,12 +95,15 @@ export class AdminController {
   @ApiOperation({ summary: 'Update member role or plan' })
   @ApiParam({ name: 'id' })
   @Patch('members/:id')
-  async updateMember(@Param('id') id: string, @Body() body: { role?: string; plan?: string }) {
+  async updateMember(@Param('id') id: string, @Body() body: { role?: string; plan?: string }, @Req() req: any) {
     const allowedRoles = ['member', 'moderator', 'admin'];
     const allowedPlans = ['faith_builder', 'faith_hero', 'faith_fighter'];
     const updates: Record<string, string> = {};
     if (body.role !== undefined) {
       if (!allowedRoles.includes(body.role)) throw new BadRequestException('Invalid role.');
+      // Only admins can assign the admin role — moderators cannot escalate privileges
+      if (body.role === 'admin' && req.user?.role !== 'admin')
+        throw new BadRequestException('Only admins can assign the admin role.');
       updates.role = body.role;
     }
     if (body.plan !== undefined) {
