@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Req, Res, Query, UseGuards, HttpCode, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, Res, Query, UseGuards, HttpCode, UnauthorizedException, ConflictException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Request, Response } from 'express';
 import * as bcrypt from 'bcryptjs';
 import { AuthGuard } from '@nestjs/passport';
@@ -20,27 +20,117 @@ export class AuthController {
 
   // 5 registrations per IP per 15 minutes — prevents account creation spam
   @Throttle({ default: { ttl: 900_000, limit: 5 } })
-  @ApiOperation({ summary: 'Register a new member account' })
+  @ApiOperation({ summary: 'Register a new member account (Initiate OTP)' })
   @ApiBody({ schema: { properties: { name: { type: 'string' }, email: { type: 'string' }, password: { type: 'string', minLength: 8 }, plan: { type: 'string', enum: ['faith_builder', 'faith_hero', 'faith_fighter'] } }, required: ['name', 'email', 'password', 'plan'] } })
-  @ApiResponse({ status: 201, description: 'Account created, session cookie set' })
-  @ApiResponse({ status: 400, description: 'Missing fields or invalid plan' })
+  @ApiResponse({ status: 200, description: 'OTP sent to email successfully' })
+  @ApiResponse({ status: 400, description: 'Missing fields, invalid email format, password < 8, or invalid plan' })
   @ApiResponse({ status: 409, description: 'Email already registered' })
   @Post('register')
+  @HttpCode(200)
   async register(
     @Body() body: { name: string; email: string; password: string; plan?: string },
-    @Res({ passthrough: true }) res: Response,
   ) {
     const { name, email, password, plan } = body;
     if (!name || !email || !password)
-      throw new (await import('@nestjs/common')).BadRequestException('Name, email and password are required.');
+      throw new BadRequestException('Name, email and password are required.');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      throw new (await import('@nestjs/common')).BadRequestException('Invalid email address.');
+      throw new BadRequestException('Invalid email address.');
+    if (password.length < 8)
+      throw new BadRequestException('Password must be at least 8 characters.');
 
-    const user = await this.authService.register(name, email, password, plan);
+    const { VALID_PLANS } = await import('../common/plan-config');
+    if (plan && !VALID_PLANS.includes(plan as any))
+      throw new BadRequestException('Invalid membership plan.');
+
+    const existing = await this.usersService.findByEmail(email);
+    if (existing) throw new ConflictException('An account with this email already exists.');
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await this.authService.generateAndSendOtp(email, 'registration', name, {
+      name,
+      passwordHash,
+      plan,
+    });
+
+    return { success: true, message: 'Verification OTP sent to your email.' };
+  }
+
+  @Throttle({ default: { ttl: 900_000, limit: 5 } })
+  @ApiOperation({ summary: 'Verify OTP and complete registration' })
+  @ApiBody({ schema: { properties: { email: { type: 'string' }, code: { type: 'string', minLength: 6, maxLength: 6 } }, required: ['email', 'code'] } })
+  @ApiResponse({ status: 201, description: 'Account created, session cookie set' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired OTP' })
+  @Post('register/verify')
+  async registerVerify(
+    @Body() body: { email: string; code: string },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { email, code } = body;
+    if (!email || !code)
+      throw new BadRequestException('Email and code are required.');
+
+    const otpDoc = await this.authService.verifyOtp(email, code, 'registration');
+    if (!otpDoc.registrationData) {
+      throw new BadRequestException('No pending registration session found.');
+    }
+
+    const { name, passwordHash, plan } = otpDoc.registrationData;
+    const user = await this.authService.registerWithHash(name, email, passwordHash, plan);
+
     const token = this.authService.signToken(user._id.toString(), user.role);
     this.authService.setSessionCookie(res, token);
-    if (plan) this.emailService.sendWelcome(user.email, user.name, plan).catch(() => {});
+    
+    if (plan) {
+      this.emailService.sendWelcome(user.email, user.name, plan).catch(() => {});
+    }
+
     return { user: this.usersService.sanitize(user) };
+  }
+
+  @Throttle({ default: { ttl: 900_000, limit: 5 } })
+  @ApiOperation({ summary: 'Initiate forgot password OTP flow' })
+  @ApiBody({ schema: { properties: { email: { type: 'string' } }, required: ['email'] } })
+  @ApiResponse({ status: 200, description: 'OTP sent to email successfully' })
+  @ApiResponse({ status: 400, description: 'User not found or invalid email' })
+  @Post('forgot-password')
+  @HttpCode(200)
+  async forgotPassword(@Body() body: { email: string }) {
+    const { email } = body;
+    if (!email) throw new BadRequestException('Email is required.');
+
+    const user = await this.usersService.findByEmail(email);
+    if (!user) throw new BadRequestException('No account found with this email.');
+
+    await this.authService.generateAndSendOtp(email, 'forgot_password', user.name);
+
+    return { success: true, message: 'Password reset OTP sent to your email.' };
+  }
+
+  @Throttle({ default: { ttl: 900_000, limit: 5 } })
+  @ApiOperation({ summary: 'Verify OTP and reset password' })
+  @ApiBody({ schema: { properties: { email: { type: 'string' }, code: { type: 'string', minLength: 6, maxLength: 6 }, password: { type: 'string', minLength: 8 } }, required: ['email', 'code', 'password'] } })
+  @ApiResponse({ status: 200, description: 'Password reset successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired OTP, password < 8' })
+  @Post('forgot-password/verify')
+  @HttpCode(200)
+  async forgotPasswordVerify(
+    @Body() body: { email: string; code: string; password?: string },
+  ) {
+    const { email, code, password } = body;
+    if (!email || !code || !password)
+      throw new BadRequestException('Email, code, and new password are required.');
+    if (password.length < 8)
+      throw new BadRequestException('Password must be at least 8 characters.');
+
+    await this.authService.verifyOtp(email, code, 'forgot_password');
+
+    const user = await this.usersService.findByEmail(email);
+    if (!user) throw new NotFoundException('User not found.');
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await this.usersService.update(user._id.toString(), { passwordHash });
+
+    return { success: true, message: 'Password has been reset successfully.' };
   }
 
   // 10 attempts per IP per 15 minutes — blocks brute-force while allowing normal use

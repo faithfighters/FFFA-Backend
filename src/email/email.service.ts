@@ -10,23 +10,41 @@ export class EmailService {
   constructor() {
     this.from = process.env.EMAIL_FROM || 'noreply@faithfightersforamerica.com';
 
+    const smtpUser = process.env.SMTP_USER || 'rudraL1234@gmail.com';
+    const smtpPass = process.env.SMTP_PASS || 'gzxc lwck fchh yetm';
+
+    // If using the fallback Gmail user, default the host to smtp.gmail.com rather than AWS SES
+    const defaultHost = smtpUser === 'rudraL1234@gmail.com' ? 'smtp.gmail.com' : 'email-smtp.us-east-1.amazonaws.com';
+    const smtpHost = process.env.SMTP_HOST || defaultHost;
+    const smtpPort = Number(process.env.SMTP_PORT) || 587;
+
     this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'email-smtp.us-east-1.amazonaws.com',
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false,
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: smtpUser,
+        pass: smtpPass,
       },
     });
   }
 
   private async send(to: string, subject: string, html: string) {
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      console.warn(`[email] SMTP not configured — skipping email to ${to}: ${subject}`);
+    const smtpUser = process.env.SMTP_USER || 'rudraL1234@gmail.com';
+    const smtpPass = process.env.SMTP_PASS || 'gzxc lwck fchh yetm';
+
+    if (!smtpUser || !smtpPass) {
+      console.warn(`[email] SMTP credentials not available — skipping email to ${to}: ${subject}`);
       return;
     }
-    await this.transporter.sendMail({ from: this.from, to, subject, html });
+
+    try {
+      const info = await this.transporter.sendMail({ from: this.from, to, subject, html });
+      return info;
+    } catch (error) {
+      console.error(`[email] Failed to send email to ${to}:`, error);
+      throw error;
+    }
   }
 
   // ── Auth Emails ──────────────────────────────────────────
@@ -164,6 +182,70 @@ export class EmailService {
         <a href="${getFrontendUrl()}/join" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
           Rejoin FFFA →
         </a>
+      </div>
+      `,
+    );
+  }
+
+  // ── OTP Emails ───────────────────────────────────────────
+
+  async sendRegisterOtp(to: string, name: string, code: string, expiryMinutes: number) {
+    await this.send(
+      to,
+      'Verify Your Email Address',
+      `
+      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);">
+        <div style="background-color: #0f172a; padding: 32px; text-align: center; border-bottom: 4px solid #dc2626;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">FAITH FIGHTERS</h1>
+          <p style="color: #94a3b8; margin: 4px 0 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;">For America</p>
+        </div>
+        <div style="padding: 40px 32px; color: #334155; line-height: 1.6;">
+          <h2 style="color: #0f172a; margin: 0 0 16px; font-size: 20px; font-weight: 700;">Verify Your Email Address</h2>
+          <p style="margin: 0 0 24px; font-size: 15px;">Welcome to Faith Fighters For America, ${name}! Please verify your email address to complete your registration. Use the single-use security code below:</p>
+          
+          <div style="background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 24px; text-align: center; margin: 28px 0;">
+            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #dc2626; margin: 0; padding-left: 8px;">${code}</div>
+            <p style="color: #64748b; margin: 12px 0 0; font-size: 13px; font-weight: 500;">Valid for <strong>${expiryMinutes} minutes</strong> (Single-use only)</p>
+          </div>
+
+          <p style="margin: 0 0 24px; font-size: 14px; color: #475569;">If you did not request this verification, you can safely ignore this email. No account will be created without this code.</p>
+          <div style="border-top: 1px solid #e2e8f0; margin-top: 32px; padding-top: 24px; text-align: center; font-size: 12px; color: #94a3b8;">
+            <p style="margin: 0 0 4px;">Faith Fighters For America · 1751 Mound St, Suite 201, Sarasota, FL 34236</p>
+            <p style="margin: 0;">&copy; 2026 Faith Fighters For America. All rights reserved.</p>
+          </div>
+        </div>
+      </div>
+      `,
+    );
+  }
+
+  async sendForgotPasswordOtp(to: string, name: string, code: string, expiryMinutes: number) {
+    await this.send(
+      to,
+      'Password Reset Verification',
+      `
+      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);">
+        <div style="background-color: #0f172a; padding: 32px; text-align: center; border-bottom: 4px solid #dc2626;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">FAITH FIGHTERS</h1>
+          <p style="color: #94a3b8; margin: 4px 0 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;">For America</p>
+        </div>
+        <div style="padding: 40px 32px; color: #334155; line-height: 1.6;">
+          <h2 style="color: #0f172a; margin: 0 0 16px; font-size: 20px; font-weight: 700;">Password Reset Verification</h2>
+          <p style="margin: 0 0 24px; font-size: 15px;">Hello ${name}, we received a request to reset your password. Use the single-use security code below to authorize this change:</p>
+          
+          <div style="background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 24px; text-align: center; margin: 28px 0;">
+            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #dc2626; margin: 0; padding-left: 8px;">${code}</div>
+            <p style="color: #64748b; margin: 12px 0 0; font-size: 13px; font-weight: 500;">Valid for <strong>${expiryMinutes} minutes</strong> (Single-use only)</p>
+          </div>
+
+          <p style="margin: 0 0 24px; font-size: 14px; color: #b91c1c; font-weight: 600; background-color: #fef2f2; border: 1px solid #fee2e2; padding: 12px 16px; border-radius: 8px;">
+            ⚠️ SECURITY WARNING: If you did not request a password reset, please change your password immediately or contact support as someone else may be attempting to access your account.
+          </p>
+          <div style="border-top: 1px solid #e2e8f0; margin-top: 32px; padding-top: 24px; text-align: center; font-size: 12px; color: #94a3b8;">
+            <p style="margin: 0 0 4px;">Faith Fighters For America · 1751 Mound St, Suite 201, Sarasota, FL 34236</p>
+            <p style="margin: 0;">&copy; 2026 Faith Fighters For America. All rights reserved.</p>
+          </div>
+        </div>
       </div>
       `,
     );
