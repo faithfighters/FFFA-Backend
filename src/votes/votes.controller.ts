@@ -57,18 +57,6 @@ export class VotesController {
     return this.castSingle(causeId, count, req.user.userId);
   }
 
-  /** Returns true if the user has already cast a vote today in this cycle. */
-  private async hasVotedToday(userId: string, cycleId: string): Promise<boolean> {
-    const existing = await this.votesService.findByUserAndCycle(userId, cycleId);
-    if (existing.length === 0) return false;
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    return existing.some(v => {
-      const created = (v as any).createdAt;
-      return created && new Date(created) >= todayStart;
-    });
-  }
-
   private async castBulk(allocation: Record<string, number>, userId: string) {
     const rawEntries = Object.entries(allocation);
     if (rawEntries.length > 20)
@@ -91,10 +79,6 @@ export class VotesController {
 
     const boosterRemaining = (user as any).boosterVotesRemaining ?? 0;
     const usingBooster = boosterRemaining > 0;
-
-    // Daily limit applies only to regular plan votes — booster votes bypass it
-    if (positiveEntries.length > 0 && !usingBooster && await this.hasVotedToday(userId, cycle._id.toString()))
-      throw new BadRequestException('You can only cast 1 vote per day. Come back tomorrow!');
 
     const planKey = user.plan as keyof typeof PLAN_CONFIG | undefined;
     const planVotes = planKey ? PLAN_CONFIG[planKey].votes : 0;
@@ -181,10 +165,6 @@ export class VotesController {
     if (!user2) throw new NotFoundException('User not found.');
     const boosterRemaining2 = (user2 as any).boosterVotesRemaining ?? 0;
     const usingBooster2 = boosterRemaining2 > 0;
-
-    // Daily limit applies only when no booster votes available
-    if (!usingBooster2 && await this.hasVotedToday(userId, cycle._id.toString()))
-      throw new BadRequestException('You can only cast 1 vote per day. Come back tomorrow!');
 
     const cause = await this.causesService.findById(causeId);
     if (!cause) throw new NotFoundException('Cause not found.');
