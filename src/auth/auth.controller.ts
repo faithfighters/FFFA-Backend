@@ -176,7 +176,7 @@ export class AuthController {
   @Post('update-profile')
   async updateProfile(
     @Req() req: Request & { user: { userId: string } },
-    @Body() body: { name?: string; password?: string; currentPassword?: string; image?: string },
+    @Body() body: { name?: string; password?: string; currentPassword?: string; image?: string; otpCode?: string },
   ) {
     const updates: any = {};
     if (body.name) {
@@ -200,6 +200,15 @@ export class AuthController {
       if (!user) throw new (await import('@nestjs/common')).NotFoundException('User not found.');
       const valid = await bcrypt.compare(body.currentPassword, user.passwordHash);
       if (!valid) throw new (await import('@nestjs/common')).UnauthorizedException('Current password is incorrect.');
+      
+      // Verify OTP code for non-admin users
+      if (user.role !== 'admin') {
+        if (!body.otpCode) {
+          throw new (await import('@nestjs/common')).BadRequestException('Verification code is required to set a new password.');
+        }
+        await this.authService.verifyOtp(user.email, body.otpCode, 'forgot_password');
+      }
+
       updates.passwordHash = await bcrypt.hash(body.password, 12);
     }
     
