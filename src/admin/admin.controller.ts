@@ -171,12 +171,23 @@ export class AdminController {
       isReported?: boolean;
       reportCount?: number;
       reportReasons?: string[];
+      votingCycleStartDate?: string;
+      votingCycleEndDate?: string;
     },
   ) {
-    const { status, isReported, reportCount, reportReasons } = body;
+    const { status, isReported, reportCount, reportReasons, votingCycleStartDate, votingCycleEndDate } = body;
     if (status && !['approved', 'rejected', 'pending'].includes(status))
       throw new BadRequestException('Invalid status.');
     
+    if (status === 'approved') {
+      if (!votingCycleStartDate || !votingCycleEndDate) {
+        throw new BadRequestException('votingCycleStartDate and votingCycleEndDate are required for approval.');
+      }
+      if (new Date(votingCycleEndDate) <= new Date(votingCycleStartDate)) {
+        throw new BadRequestException('votingCycleEndDate must be after votingCycleStartDate.');
+      }
+    }
+
     const video = await this.videosService.findById(id);
     if (!video) throw new NotFoundException('Video not found.');
     
@@ -185,6 +196,13 @@ export class AdminController {
     if (isReported !== undefined) updates.isReported = isReported;
     if (reportCount !== undefined) updates.reportCount = reportCount;
     if (reportReasons !== undefined) updates.reportReasons = reportReasons;
+    if (status === 'approved') {
+      updates.votingCycleStartDate = votingCycleStartDate;
+      updates.votingCycleEndDate = votingCycleEndDate;
+    } else if (status === 'pending' || status === 'rejected') {
+      updates.votingCycleStartDate = undefined;
+      updates.votingCycleEndDate = undefined;
+    }
     
     const updated = await this.videosService.update(id, updates);
     return { video: updated };

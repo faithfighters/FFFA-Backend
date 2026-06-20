@@ -5,12 +5,14 @@ import { VideosService } from './videos.service';
 import { VideosController } from './videos.controller';
 import { UsersModule } from '../users/users.module';
 import { TranscriptionModule } from '../transcription/transcription.module';
+import { CausesModule } from '../causes/causes.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Video.name, schema: VideoSchema }]),
     UsersModule,
     TranscriptionModule,
+    CausesModule,
   ],
   providers: [VideosService],
   controllers: [VideosController],

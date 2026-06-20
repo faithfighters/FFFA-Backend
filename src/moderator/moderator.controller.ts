@@ -94,16 +94,27 @@ export class ModeratorController {
       status: 'approved' | 'rejected';
       rejectionReason?: string;
       moderationNote?: string;
+      votingCycleStartDate?: string;
+      votingCycleEndDate?: string;
     },
     @Req() req: any,
   ) {
-    const { status, rejectionReason, moderationNote } = body;
+    const { status, rejectionReason, moderationNote, votingCycleStartDate, votingCycleEndDate } = body;
 
     if (!['approved', 'rejected'].includes(status))
       throw new BadRequestException('status must be approved or rejected.');
 
     if (status === 'rejected' && !rejectionReason?.trim())
       throw new BadRequestException('A rejection reason is required when rejecting a submission.');
+
+    if (status === 'approved') {
+      if (!votingCycleStartDate || !votingCycleEndDate) {
+        throw new BadRequestException('votingCycleStartDate and votingCycleEndDate are required for approval.');
+      }
+      if (new Date(votingCycleEndDate) <= new Date(votingCycleStartDate)) {
+        throw new BadRequestException('votingCycleEndDate must be after votingCycleStartDate.');
+      }
+    }
 
     const video = await this.videosService.findById(id);
     if (!video) throw new NotFoundException('Video not found.');
@@ -119,6 +130,8 @@ export class ModeratorController {
       moderatedAt: new Date().toISOString(),
       rejectionReason: status === 'rejected' ? rejectionReason : '',
       moderationNote: moderationNote || '',
+      votingCycleStartDate: status === 'approved' ? votingCycleStartDate : undefined,
+      votingCycleEndDate: status === 'approved' ? votingCycleEndDate : undefined,
     } as any);
 
     const submitter = await this.usersService.findById(video.authorId?.toString());

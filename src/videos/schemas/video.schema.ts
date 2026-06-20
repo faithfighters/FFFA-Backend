@@ -7,6 +7,8 @@ const toJSON = {
   transform: (_doc: any, ret: any) => {
     ret.id = ret._id?.toString();
     ret.authorId = ret.authorId?.toString();
+    if (ret.causeId) ret.causeId = ret.causeId.toString();
+    ret.requiredVotes = ret.targetAmount ? Math.ceil(ret.targetAmount / 0.8) : 0;
     delete ret._id;
     delete ret.__v;
     return ret;
@@ -29,6 +31,9 @@ export class Video {
 
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   authorId: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Cause' })
+  causeId: Types.ObjectId;
 
   @Prop({ required: true })
   authorName: string;
@@ -106,6 +111,15 @@ export class Video {
   // ── Featured ───────────────────────────────────────────
   @Prop({ default: false })
   isFeatured: boolean;
+
+  @Prop({ default: 0 })
+  voteCount: number;
+
+  @Prop()
+  votingCycleStartDate: string;
+
+  @Prop()
+  votingCycleEndDate: string;
 
   // ── Reporting System ───────────────────────────────────
   @Prop({ default: false })

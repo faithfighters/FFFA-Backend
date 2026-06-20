@@ -6,6 +6,7 @@ import { VotesController } from './votes.controller';
 import { VotingCyclesModule } from '../voting-cycles/voting-cycles.module';
 import { CausesModule } from '../causes/causes.module';
 import { UsersModule } from '../users/users.module';
+import { VideosModule } from '../videos/videos.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { UsersModule } from '../users/users.module';
     VotingCyclesModule,
     CausesModule,
     UsersModule,
+    VideosModule,
   ],
   providers: [VotesService],
   controllers: [VotesController],

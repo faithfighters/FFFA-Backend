@@ -22,12 +22,13 @@ export class VotesService {
     return this.voteModel.find().exec();
   }
 
-  create(data: { userId: string; causeId: string; cycleId: string; count: number }): Promise<VoteDocument> {
+  create(data: { userId: string; causeId: string; cycleId: string; count: number; videoId?: string }): Promise<VoteDocument> {
     return this.voteModel.create({
       userId: new Types.ObjectId(data.userId),
       causeId: new Types.ObjectId(data.causeId),
       cycleId: new Types.ObjectId(data.cycleId),
       count: data.count,
+      videoId: data.videoId ? new Types.ObjectId(data.videoId) : undefined,
     });
   }
 

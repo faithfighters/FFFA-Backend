@@ -6,6 +6,7 @@ import { VotesService } from './votes.service';
 import { VotingCyclesService } from '../voting-cycles/voting-cycles.service';
 import { CausesService } from '../causes/causes.service';
 import { UsersService } from '../users/users.service';
+import { VideosService } from '../videos/videos.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
@@ -19,6 +20,7 @@ export class VotesController {
     private readonly cyclesService: VotingCyclesService,
     private readonly causesService: CausesService,
     private readonly usersService: UsersService,
+    private readonly videosService: VideosService,
   ) {}
 
   @ApiOperation({ summary: 'Get active cycle, causes, and user\'s existing votes' })
@@ -38,15 +40,15 @@ export class VotesController {
 
   // POST /votes — submit a single vote
   @ApiOperation({ summary: 'Cast votes', description: 'Single vote: { causeId, count } or bulk allocation: { allocation: { causeId: count } }' })
-  @ApiBody({ schema: { properties: { causeId: { type: 'string' }, count: { type: 'number' }, allocation: { type: 'object', additionalProperties: { type: 'number' } } } } })
+  @ApiBody({ schema: { properties: { causeId: { type: 'string' }, count: { type: 'number' }, allocation: { type: 'object', additionalProperties: { type: 'number' } }, videoId: { type: 'string' } } } })
   @ApiResponse({ status: 201, description: 'Votes cast successfully' })
   @ApiResponse({ status: 400, description: 'No active cycle, cycle closed, or insufficient votes remaining' })
   @Post()
   @UseGuards(JwtAuthGuard)
-  async cast(@Body() body: { causeId: string; count: number; allocation?: Record<string, number> }, @Req() req: any) {
+  async cast(@Body() body: { causeId: string; count: number; allocation?: Record<string, number>; videoId?: string }, @Req() req: any) {
     // Support both bulk { allocation: { causeId: count } } and single { causeId, count }
     if (body.allocation) {
-      return this.castBulk(body.allocation, req.user.userId);
+      return this.castBulk(body.allocation, req.user.userId, body.videoId);
     }
 
     const { causeId } = body;
@@ -54,10 +56,10 @@ export class VotesController {
     if (!causeId || !count || count < 1 || !Number.isFinite(count))
       throw new BadRequestException('causeId and a positive integer count are required.');
 
-    return this.castSingle(causeId, count, req.user.userId);
+    return this.castSingle(causeId, count, req.user.userId, body.videoId);
   }
 
-  private async castBulk(allocation: Record<string, number>, userId: string) {
+  private async castBulk(allocation: Record<string, number>, userId: string, videoId?: string) {
     const rawEntries = Object.entries(allocation);
     if (rawEntries.length > 20)
       throw new BadRequestException('Allocation cannot contain more than 20 causes at once.');
@@ -101,6 +103,48 @@ export class VotesController {
         throw new BadRequestException(`You only have ${planVotes} donation vote(s) for this cycle.`);
     }
 
+    // Validate all video vote restrictions before applying any database changes
+    const now = new Date();
+    for (const [causeId, targetCount] of positiveEntries) {
+      const already = existingVotes.find(v => v.causeId.toString() === causeId);
+      const alreadyCount = already ? already.count : 0;
+      const diff = targetCount - alreadyCount;
+
+      if (diff === 0) continue;
+
+      const activeVideoId = videoId || already?.videoId?.toString();
+      if (activeVideoId) {
+        const video = await this.videosService.findById(activeVideoId);
+        if (video) {
+          if (video.votingCycleStartDate) {
+            const startDate = new Date(video.votingCycleStartDate);
+            if (now < startDate) {
+              throw new BadRequestException(`The voting cycle for "${video.title}" has not started yet.`);
+            }
+          }
+          if (video.votingCycleEndDate) {
+            const endDate = new Date(video.votingCycleEndDate);
+            if (now > endDate) {
+              throw new BadRequestException(`The voting cycle for "${video.title}" has expired.`);
+            }
+          }
+
+          const requiredVotes = video.targetAmount ? Math.ceil(video.targetAmount / 0.8) : 0;
+          const otherUsersVotes = Math.max(0, (video.voteCount || 0) - alreadyCount);
+          const newTotalVotes = otherUsersVotes + targetCount;
+
+          if (video.voteCount >= requiredVotes && diff > 0) {
+            throw new BadRequestException(`The video "${video.title}" has already reached its required vote count.`);
+          }
+          if (newTotalVotes > requiredVotes) {
+            throw new BadRequestException(
+              `Cannot cast ${targetCount} votes to "${video.title}". Only ${requiredVotes - otherUsersVotes} votes remaining are required.`
+            );
+          }
+        }
+      }
+    }
+
     // Clear votes for causes explicitly set to 0 (reallocation)
     for (const [causeId] of zeroEntries) {
       const existing = existingVotes.find(v => v.causeId.toString() === causeId);
@@ -111,6 +155,14 @@ export class VotesController {
             totalVotes: Math.max(0, cause.totalVotes - existing.count),
             raisedAmount: Math.max(0, cause.raisedAmount - perVoteDollars * existing.count),
           });
+        }
+        if (existing.videoId) {
+          const video = await this.videosService.findById(existing.videoId.toString());
+          if (video) {
+            await this.videosService.update(video.id, {
+              voteCount: Math.max(0, (video.voteCount || 0) - existing.count),
+            });
+          }
         }
         await this.votesService.deleteVote(existing._id.toString());
       }
@@ -131,10 +183,22 @@ export class VotesController {
       if (cause.submittedBy?.toString() === userId)
         throw new BadRequestException('You cannot vote for a cause you submitted.');
 
+      const activeVideoId = videoId || already?.videoId?.toString();
+      if (activeVideoId) {
+        const video = await this.videosService.findById(activeVideoId);
+        if (video) {
+          const otherUsersVotes = Math.max(0, (video.voteCount || 0) - alreadyCount);
+          const newTotalVotes = otherUsersVotes + targetCount;
+          await this.videosService.update(video.id, {
+            voteCount: newTotalVotes,
+          });
+        }
+      }
+
       if (already) {
         await this.votesService.updateCount(already._id.toString(), targetCount);
       } else {
-        await this.votesService.create({ userId, causeId, cycleId: cycle._id.toString(), count: targetCount });
+        await this.votesService.create({ userId, causeId, cycleId: cycle._id.toString(), count: targetCount, videoId: activeVideoId });
       }
 
       await this.causesService.update(causeId, {
@@ -154,7 +218,7 @@ export class VotesController {
     return { success: true };
   }
 
-  private async castSingle(causeId: string, count: number, userId: string) {
+  private async castSingle(causeId: string, count: number, userId: string, videoId?: string) {
     const cycle = await this.cyclesService.findActive();
     if (!cycle) throw new BadRequestException('No active donation cycle.');
     // Vote locking — reject votes once cycle is closed
@@ -191,12 +255,49 @@ export class VotesController {
     }
 
     const alreadyVoted = existingVotes.find(v => v.causeId.toString() === causeId);
+
+    const activeVideoId = videoId || alreadyVoted?.videoId?.toString();
+    if (activeVideoId) {
+      const video = await this.videosService.findById(activeVideoId);
+      if (video) {
+        const now = new Date();
+        if (video.votingCycleStartDate) {
+          const startDate = new Date(video.votingCycleStartDate);
+          if (now < startDate) {
+            throw new BadRequestException(`The voting cycle for "${video.title}" has not started yet.`);
+          }
+        }
+        if (video.votingCycleEndDate) {
+          const endDate = new Date(video.votingCycleEndDate);
+          if (now > endDate) {
+            throw new BadRequestException(`The voting cycle for "${video.title}" has expired.`);
+          }
+        }
+
+        const requiredVotes = video.targetAmount ? Math.ceil(video.targetAmount / 0.8) : 0;
+        const newTotalVotes = (video.voteCount || 0) + count;
+
+        if (video.voteCount >= requiredVotes) {
+          throw new BadRequestException(`The video "${video.title}" has already reached its required vote count.`);
+        }
+        if (newTotalVotes > requiredVotes) {
+          throw new BadRequestException(
+            `Cannot cast ${count} votes. Only ${requiredVotes - video.voteCount} votes remaining are required for this video.`
+          );
+        }
+
+        await this.videosService.update(video.id, {
+          voteCount: newTotalVotes,
+        });
+      }
+    }
+
     if (alreadyVoted) {
       // Allow multiple/incremental casting by updating the existing vote count
       await this.votesService.updateCount(alreadyVoted._id.toString(), alreadyVoted.count + count);
     } else {
       // Create new vote record
-      await this.votesService.create({ userId, causeId, cycleId: cycle._id.toString(), count });
+      await this.votesService.create({ userId, causeId, cycleId: cycle._id.toString(), count, videoId: activeVideoId });
     }
 
     const perVoteDollars = planKey ? (PLAN_CONFIG[planKey].price * 0.8) / planVotes : 0;

@@ -19,7 +19,7 @@ export class AuthService {
     private readonly emailService: EmailService,
     @InjectModel(SsoJti.name) private readonly ssoJtiModel: Model<SsoJtiDocument>,
     @InjectModel(Otp.name) private readonly otpModel: Model<OtpDocument>,
-  ) {}
+  ) { }
 
   async register(name: string, email: string, password: string, plan?: string) {
     if (plan && !VALID_PLANS.includes(plan as any))

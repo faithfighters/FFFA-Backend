@@ -9,6 +9,7 @@ const toJSON = {
     ret.userId = ret.userId?.toString();
     ret.causeId = ret.causeId?.toString();
     ret.cycleId = ret.cycleId?.toString();
+    if (ret.videoId) ret.videoId = ret.videoId.toString();
     delete ret._id;
     delete ret.__v;
     return ret;
@@ -25,6 +26,9 @@ export class Vote {
 
   @Prop({ type: Types.ObjectId, ref: 'VotingCycle', required: true })
   cycleId: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Video', required: false })
+  videoId: Types.ObjectId;
 
   @Prop({ required: true, min: 1 })
   count: number;

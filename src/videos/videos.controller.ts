@@ -5,6 +5,8 @@ import {
 import { VideosService } from './videos.service';
 import { UsersService } from '../users/users.service';
 import { TranscriptionService } from '../transcription/transcription.service';
+import { CausesService } from '../causes/causes.service';
+import { Types } from 'mongoose';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ModeratorGuard } from '../auth/moderator.guard';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
@@ -16,6 +18,7 @@ export class VideosController {
     private readonly videosService: VideosService,
     private readonly usersService: UsersService,
     private readonly transcriptionService: TranscriptionService,
+    private readonly causesService: CausesService,
   ) {}
 
   /** Public — approved videos only, featured video first */
@@ -72,12 +75,28 @@ export class VideosController {
         phone?: string;
         accountNumber?: string;
       };
+      causeId?: string;
     },
     @Req() req: any,
   ) {
     const { title, description, thumbnailUrl, videoUrl, causeTag } = body;
     if (!title || !description || !videoUrl || !causeTag)
       throw new BadRequestException('title, description, videoUrl and causeTag are required.');
+
+    let targetAmount = body.targetAmount;
+    let causeIdObj: Types.ObjectId | undefined = undefined;
+
+    if (body.causeId) {
+      if (Types.ObjectId.isValid(body.causeId)) {
+        causeIdObj = new Types.ObjectId(body.causeId);
+      }
+      if (!targetAmount) {
+        const cause = await this.causesService.findById(body.causeId);
+        if (cause) {
+          targetAmount = cause.goalAmount;
+        }
+      }
+    }
 
     const user = await this.usersService.findById(req.user.userId);
     const video = await this.videosService.create({
@@ -91,7 +110,8 @@ export class VideosController {
       status: 'pending',
       beneficiaryName: body.beneficiaryName,
       urgencyReason: body.urgencyReason,
-      targetAmount: body.targetAmount,
+      targetAmount,
+      causeId: causeIdObj as any,
       submitterPhone: body.submitterPhone,
       submitterEmail: body.submitterEmail,
       paymentDestination: body.paymentDestination,
@@ -121,15 +141,26 @@ export class VideosController {
       status: 'approved' | 'rejected';
       rejectionReason?: string;
       moderationNote?: string;
+      votingCycleStartDate?: string;
+      votingCycleEndDate?: string;
     },
     @Req() req: any,
   ) {
-    const { status, rejectionReason, moderationNote } = body;
+    const { status, rejectionReason, moderationNote, votingCycleStartDate, votingCycleEndDate } = body;
     if (!['approved', 'rejected'].includes(status))
       throw new BadRequestException('status must be approved or rejected.');
 
     if (status === 'rejected' && !rejectionReason)
       throw new BadRequestException('A rejection reason is required when rejecting a video.');
+
+    if (status === 'approved') {
+      if (!votingCycleStartDate || !votingCycleEndDate) {
+        throw new BadRequestException('votingCycleStartDate and votingCycleEndDate are required for approval.');
+      }
+      if (new Date(votingCycleEndDate) <= new Date(votingCycleStartDate)) {
+        throw new BadRequestException('votingCycleEndDate must be after votingCycleStartDate.');
+      }
+    }
 
     const video = await this.videosService.findById(id);
     if (!video) throw new NotFoundException('Video not found.');
@@ -145,6 +176,8 @@ export class VideosController {
       moderatedAt: new Date().toISOString(),
       rejectionReason: rejectionReason || '',
       moderationNote: moderationNote || '',
+      votingCycleStartDate: status === 'approved' ? votingCycleStartDate : undefined,
+      votingCycleEndDate: status === 'approved' ? votingCycleEndDate : undefined,
     } as any);
 
     return { video: updated };
