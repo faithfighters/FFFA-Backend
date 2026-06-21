@@ -220,15 +220,20 @@ export class AdminController {
   async createCycle(
     @Body() body: { name: string; startDate: string; endDate: string; causes?: string[] },
   ) {
-    const { name, startDate, endDate, causes } = body;
-    if (!name || !startDate || !endDate) throw new BadRequestException('Missing required fields.');
+    const { name, startDate } = body;
+    if (!name || !startDate) throw new BadRequestException('Missing required fields.');
     await this.cyclesService.closeActive();
+
+    // Fetch all active causes to ensure they follow the same cycle
+    const activeCauses = await this.causesService.findActive();
+    const activeCauseIds = activeCauses.map(c => c._id);
+
     const cycle = await this.cyclesService.create({
       name,
       startDate,
-      endDate,
+      endDate: '2030-11-30T23:59:59.000Z',
       status: 'active',
-      causes: (causes || []).map(id => new Types.ObjectId(id)) as any,
+      causes: activeCauseIds as any,
     });
     return { cycle };
   }
@@ -242,14 +247,27 @@ export class AdminController {
     const updates: Record<string, any> = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.startDate !== undefined) updates.startDate = body.startDate;
-    if (body.endDate !== undefined) updates.endDate = body.endDate;
+
+    const cycle = await this.cyclesService.findById(id);
+    if (!cycle) throw new NotFoundException('Cycle not found.');
+
+    const isTargetActive = body.status === 'active' || (body.status === undefined && cycle.status === 'active');
+
+    if (isTargetActive) {
+      updates.endDate = '2030-11-30T23:59:59.000Z';
+      const activeCauses = await this.causesService.findActive();
+      updates.causes = activeCauses.map(c => c._id);
+    } else {
+      if (body.endDate !== undefined) updates.endDate = body.endDate;
+      if (body.causes !== undefined) updates.causes = body.causes.map(id => new Types.ObjectId(id));
+    }
+
     if (body.status !== undefined) {
       if (!allowedStatuses.includes(body.status)) throw new BadRequestException('Invalid status.');
       updates.status = body.status;
     }
-    if (body.causes !== undefined) updates.causes = body.causes.map(id => new Types.ObjectId(id));
+
     const updated = await this.cyclesService.update(id, updates);
-    if (!updated) throw new NotFoundException('Cycle not found.');
     return { cycle: updated };
   }
 
