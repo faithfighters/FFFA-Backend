@@ -130,6 +130,13 @@ export class Video {
 
   @Prop({ type: [String], default: [] })
   reportReasons: string[];
+
+  // ── Likes System ───────────────────────────────────────
+  @Prop({ default: 0 })
+  likesCount: number;
+
+  @Prop({ type: [String], default: [] })
+  likedBy: string[];
 }
 
 export const VideoSchema = SchemaFactory.createForClass(Video);

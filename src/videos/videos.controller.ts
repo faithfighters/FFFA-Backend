@@ -215,4 +215,44 @@ export class VideosController {
 
     return { success: true, video: updated };
   }
+
+  /** Like a video submission — requires authentication */
+  @ApiOperation({ summary: 'Like a video submission' })
+  @ApiCookieAuth('fffa_session')
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/like')
+  async likeVideo(
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    const video = await this.videosService.findById(id);
+    if (!video) throw new NotFoundException('Video not found.');
+
+    const userId = req.user.userId;
+    let likedBy: string[] = (video as any).likedBy || [];
+    let likesCount = video.likesCount ?? 0;
+
+    const hasLiked = likedBy.includes(userId);
+
+    if (hasLiked) {
+      // Toggle off (unlike)
+      likedBy = likedBy.filter(uid => uid !== userId);
+      likesCount = Math.max(0, likesCount - 1);
+    } else {
+      // Toggle on (like)
+      likedBy = [...likedBy, userId];
+      likesCount += 1;
+    }
+
+    const updated = await this.videosService.update(id, {
+      likedBy,
+      likesCount,
+    } as any);
+
+    return {
+      success: true,
+      liked: !hasLiked,
+      likesCount: updated.likesCount,
+    };
+  }
 }
