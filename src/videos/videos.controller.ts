@@ -27,7 +27,15 @@ export class VideosController {
   @ApiResponse({ status: 200, description: 'List of approved videos' })
   @Get()
   async findAll(@Query('causeTag') causeTag?: string) {
-    const filter: Record<string, any> = { status: 'approved' };
+    const filter: Record<string, any> = {
+      status: 'approved',
+      $or: [
+        { votingCycleEndDate: { $exists: false } },
+        { votingCycleEndDate: null },
+        { votingCycleEndDate: '' },
+        { votingCycleEndDate: { $gte: new Date().toISOString() } },
+      ],
+    };
     if (causeTag) filter.causeTag = causeTag;
     const videos = await this.videosService.findAll(filter);
     // Featured video always comes first
