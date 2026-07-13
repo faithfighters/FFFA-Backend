@@ -9,6 +9,7 @@ export type NotificationType =
   | 'cause_approved'
   | 'cause_funded'
   | 'votes_added'
+  | 'vote_cast'
   | 'cycle_closed'
   | 'welcome';
 

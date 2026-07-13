@@ -10,6 +10,7 @@ import { VideosService } from '../videos/videos.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @ApiTags('Votes')
 @ApiCookieAuth('fffa_session')
@@ -21,6 +22,7 @@ export class VotesController {
     private readonly causesService: CausesService,
     private readonly usersService: UsersService,
     private readonly videosService: VideosService,
+    private readonly notifService: NotificationsService,
   ) {}
 
   @ApiOperation({ summary: 'Get active cycle, causes, and user\'s existing votes' })
@@ -95,12 +97,15 @@ export class VotesController {
       .filter(v => !mentionedCauses.has(v.causeId.toString()))
       .reduce((s, v) => s + v.count, 0);
 
-    if (usingBooster) {
-      if (targetTotal > boosterRemaining)
-        throw new BadRequestException(`You only have ${boosterRemaining} booster vote(s) remaining.`);
-    } else {
-      if (targetTotal + unmentionedVotes > planVotes)
-        throw new BadRequestException(`You only have ${planVotes} donation vote(s) for this cycle.`);
+    const planRemaining = user.votesRemaining ?? 0;
+    const totalAvailable = planRemaining + boosterRemaining;
+
+    const previousTotalCast = existingVotes.reduce((s, v) => s + v.count, 0);
+    const newTotalCast = targetTotal + unmentionedVotes;
+    const diff = newTotalCast - previousTotalCast;
+
+    if (diff > 0 && diff > totalAvailable) {
+      throw new BadRequestException(`You only have ${totalAvailable} vote(s) remaining.`);
     }
 
     // Validate all video vote restrictions before applying any database changes
@@ -205,14 +210,46 @@ export class VotesController {
         totalVotes: Math.max(0, cause.totalVotes + diff),
         raisedAmount: Math.max(0, cause.raisedAmount + perVoteDollars * diff),
       });
+
+      if (diff > 0) {
+        await this.notifService.create({
+          userId,
+          type: 'vote_cast',
+          title: `Voted on ${cause.name}`,
+          message: `${diff} vote${diff !== 1 ? 's' : ''} casted for this campaign.`,
+          link: '/dashboard/campaigns',
+        }).catch(() => {});
+      }
     }
 
-    if (usingBooster) {
-      const newBooster = Math.max(0, boosterRemaining - targetTotal);
-      await this.usersService.update(userId, { boosterVotesRemaining: newBooster } as any);
-    } else {
-      const updatedRemaining = Math.max(0, planVotes - (targetTotal + unmentionedVotes));
-      await this.usersService.update(userId, { votesRemaining: updatedRemaining });
+    if (diff > 0) {
+      let planDeduct = 0;
+      let boosterDeduct = 0;
+      if (planRemaining >= diff) {
+        planDeduct = diff;
+      } else {
+        planDeduct = planRemaining;
+        boosterDeduct = diff - planRemaining;
+      }
+      await this.usersService.update(userId, {
+        votesRemaining: Math.max(0, planRemaining - planDeduct),
+        boosterVotesRemaining: Math.max(0, boosterRemaining - boosterDeduct),
+      } as any);
+    } else if (diff < 0) {
+      const refundAmount = -diff;
+      let planRefund = 0;
+      let boosterRefund = 0;
+      const planMissing = Math.max(0, planVotes - planRemaining);
+      if (planMissing >= refundAmount) {
+        planRefund = refundAmount;
+      } else {
+        planRefund = planMissing;
+        boosterRefund = refundAmount - planMissing;
+      }
+      await this.usersService.update(userId, {
+        votesRemaining: planRemaining + planRefund,
+        boosterVotesRemaining: boosterRemaining + boosterRefund,
+      } as any);
     }
 
     return { success: true };
@@ -224,11 +261,6 @@ export class VotesController {
     // Vote locking — reject votes once cycle is closed
     if (cycle.status !== 'active')
       throw new BadRequestException('This voting cycle is no longer accepting votes.');
-
-    const user2 = await this.usersService.findById(userId);
-    if (!user2) throw new NotFoundException('User not found.');
-    const boosterRemaining2 = (user2 as any).boosterVotesRemaining ?? 0;
-    const usingBooster2 = boosterRemaining2 > 0;
 
     const cause = await this.causesService.findById(causeId);
     if (!cause) throw new NotFoundException('Cause not found.');
@@ -246,12 +278,12 @@ export class VotesController {
     const usedVotes = existingVotes.reduce((s, v) => s + v.count, 0);
     const remaining = planVotes - usedVotes;
 
-    if (usingBooster2) {
-      if (count > boosterRemaining2)
-        throw new BadRequestException(`You only have ${boosterRemaining2} booster vote(s) remaining.`);
-    } else {
-      if (count > remaining)
-        throw new BadRequestException(`You only have ${remaining} donation vote(s) remaining.`);
+    const planRemaining = user.votesRemaining ?? 0;
+    const boosterRemaining = (user as any).boosterVotesRemaining ?? 0;
+    const totalAvailable = planRemaining + boosterRemaining;
+
+    if (count > totalAvailable) {
+      throw new BadRequestException(`You only have ${totalAvailable} vote(s) remaining.`);
     }
 
     const alreadyVoted = existingVotes.find(v => v.causeId.toString() === causeId);
@@ -306,12 +338,28 @@ export class VotesController {
       raisedAmount: cause.raisedAmount + perVoteDollars * count,
     });
 
-    if (usingBooster2) {
-      await this.usersService.update(userId, { boosterVotesRemaining: Math.max(0, boosterRemaining2 - count) } as any);
+    let planDeduct = 0;
+    let boosterDeduct = 0;
+    if (planRemaining >= count) {
+      planDeduct = count;
     } else {
-      const updatedRemaining = Math.max(0, remaining - count);
-      await this.usersService.update(userId, { votesRemaining: updatedRemaining });
+      planDeduct = planRemaining;
+      boosterDeduct = count - planRemaining;
     }
+    const newPlanRemaining = Math.max(0, planRemaining - planDeduct);
+    const newBoosterRemaining = Math.max(0, boosterRemaining - boosterDeduct);
+    await this.usersService.update(userId, {
+      votesRemaining: newPlanRemaining,
+      boosterVotesRemaining: newBoosterRemaining,
+    } as any);
+
+    await this.notifService.create({
+      userId,
+      type: 'vote_cast',
+      title: `Voted on ${cause.name}`,
+      message: `${count} vote${count !== 1 ? 's' : ''} casted for this campaign.`,
+      link: '/dashboard/campaigns',
+    }).catch(() => {});
 
     return { success: true };
   }
