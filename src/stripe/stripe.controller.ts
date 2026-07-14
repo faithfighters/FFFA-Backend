@@ -17,6 +17,7 @@ import { Types } from 'mongoose';
 import { PaymentRecord, PaymentRecordDocument } from './schemas/payment-record.schema';
 import { getFrontendUrl } from '../common/url-resolver';
 import { StripeSyncService } from './stripe-sync.service';
+import * as jwt from 'jsonwebtoken';
 
 const stripeKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeKey
@@ -144,6 +145,105 @@ export class StripeController {
     return { synced };
   }
 
+  @Post('donate-checkout')
+  async donateCheckout(
+    @Body() body: { amount?: number },
+    @Req() req: Request,
+  ) {
+    if (!stripe) throw new BadRequestException('Stripe is not configured.');
+    const amount = body?.amount;
+
+    let userId = 'anonymous';
+    let userEmail: string | undefined;
+
+    const token = req.cookies?.['session'];
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+        if (decoded?.userId) {
+          const user = await this.usersService.findById(decoded.userId);
+          if (user) {
+            userId = user._id.toString();
+            userEmail = user.email;
+          }
+        }
+      } catch (err) {
+        // Ignore invalid/expired tokens, treat as anonymous
+      }
+    }
+
+    const frontendUrl = getFrontendUrl();
+    let lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
+
+    if (!amount || amount <= 0) {
+      // Find or create the product for custom donation
+      const products = await stripe.products.list({ limit: 100 });
+      let product = products.data.find(p => p.name === 'Faith Fighters Custom Donation');
+
+      if (!product) {
+        product = await stripe.products.create({
+          name: 'Faith Fighters Custom Donation',
+          description: 'Custom pay-what-you-want donation support.',
+        });
+      }
+
+      // Find or create the price with custom_unit_amount enabled
+      const prices = await stripe.prices.list({ product: product.id, limit: 100 });
+      let price = prices.data.find(p => p.custom_unit_amount !== null);
+
+      if (!price) {
+        price = await stripe.prices.create({
+          currency: 'usd',
+          product: product.id,
+          custom_unit_amount: {
+            enabled: true,
+          },
+        });
+      }
+
+      lineItems = [
+        {
+          price: price.id,
+          quantity: 1,
+        },
+      ];
+    } else {
+      lineItems = [
+        {
+          price_data: {
+            currency: 'usd',
+            unit_amount: Math.round(amount * 100),
+            product_data: {
+              name: 'Donation to Faith Fighters For America',
+              description: 'Thank you for supporting our mission!',
+            },
+          },
+          quantity: 1,
+        },
+      ];
+    }
+
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: lineItems,
+      metadata: {
+        type: amount && amount > 0 ? 'direct_donation' : 'custom_donation',
+        userId,
+        ...(amount && amount > 0 ? { amount: String(amount) } : {}),
+      },
+      success_url: `${frontendUrl}/donation?status=success${amount && amount > 0 ? `&amount=${amount}` : ''}`,
+      cancel_url: `${frontendUrl}/donation`,
+    };
+
+    if (userEmail) {
+      sessionParams.customer_email = userEmail;
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    return { url: session.url };
+  }
+
   @Post('checkout')
   @UseGuards(JwtAuthGuard)
   async checkout(@Body() body: { plan: string }, @Req() req: any) {
@@ -208,7 +308,67 @@ export class StripeController {
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
-      const { userId, plan, votes, type } = (session.metadata || {}) as { userId: string; plan: string; votes: string; type: string };
+      const { userId, plan, votes, type, amount } = (session.metadata || {}) as { userId: string; plan: string; votes: string; type: string; amount: string };
+
+      // ── Direct Donation ──
+      if (type === 'direct_donation' && amount) {
+        const parsedAmount = parseFloat(amount);
+        try {
+          await this.paymentModel.create({
+            stripeCustomerId: session.customer as string || '',
+            stripeSubscriptionId: '',
+            userId: userId === 'anonymous' ? '' : userId,
+            amount: parsedAmount,
+            plan: 'direct_donation',
+            paidAt: new Date().toISOString(),
+            status: 'succeeded',
+            stripeInvoiceId: session.id,
+          });
+        } catch (err) {
+          // ignore duplicate
+        }
+
+        if (userId && userId !== 'anonymous') {
+          this.notifService.create({
+            userId,
+            type: 'welcome',
+            title: '❤️ Thank you for your support!',
+            message: `We received your donation of $${parsedAmount}. Thank you for standing with us!`,
+            link: '/dashboard',
+          }).catch(() => {});
+        }
+        return res.json({ received: true });
+      }
+
+      // ── Custom Donation (Customer chooses price on Stripe page) ──
+      if (type === 'custom_donation') {
+        const parsedAmount = (session.amount_total ?? 0) / 100;
+        try {
+          await this.paymentModel.create({
+            stripeCustomerId: session.customer as string || '',
+            stripeSubscriptionId: '',
+            userId: userId === 'anonymous' ? '' : userId,
+            amount: parsedAmount,
+            plan: 'custom_donation',
+            paidAt: new Date().toISOString(),
+            status: 'succeeded',
+            stripeInvoiceId: session.id,
+          });
+        } catch (err) {
+          // ignore duplicate
+        }
+
+        if (userId && userId !== 'anonymous') {
+          this.notifService.create({
+            userId,
+            type: 'welcome',
+            title: '❤️ Thank you for your support!',
+            message: `We received your donation of $${parsedAmount}. Thank you for standing with us!`,
+            link: '/dashboard',
+          }).catch(() => {});
+        }
+        return res.json({ received: true });
+      }
 
       // ── Booster vote top-up (one-time payment, no daily limit) ──
       if (type === 'vote_topup' && userId && votes) {
