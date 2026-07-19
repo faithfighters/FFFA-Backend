@@ -21,7 +21,7 @@ export class AuthService {
     @InjectModel(Otp.name) private readonly otpModel: Model<OtpDocument>,
   ) { }
 
-  async register(name: string, email: string, password: string, plan?: string) {
+  async register(name: string, email: string, password: string, plan?: string, userType?: string) {
     if (plan && !VALID_PLANS.includes(plan as any))
       throw new BadRequestException('Invalid membership plan.');
     if (password.length < 8)
@@ -37,6 +37,7 @@ export class AuthService {
       email: email.toLowerCase().trim(),
       passwordHash,
       role: 'member',
+      userType: userType === 'recipient' ? 'recipient' : 'donor',
     };
 
     if (plan) {
@@ -178,7 +179,7 @@ export class AuthService {
     return otpDoc;
   }
 
-  async registerWithHash(name: string, email: string, passwordHash: string, plan?: string) {
+  async registerWithHash(name: string, email: string, passwordHash: string, plan?: string, userType?: string) {
     if (plan && !VALID_PLANS.includes(plan as any))
       throw new BadRequestException('Invalid membership plan.');
 
@@ -190,6 +191,7 @@ export class AuthService {
       email: email.toLowerCase().trim(),
       passwordHash,
       role: 'member',
+      userType: userType === 'recipient' ? 'recipient' : 'donor',
     };
 
     if (plan) {

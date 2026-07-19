@@ -21,22 +21,24 @@ export class AuthController {
   // 5 registrations per IP per 15 minutes — prevents account creation spam
   @Throttle({ default: { ttl: 900_000, limit: 5 } })
   @ApiOperation({ summary: 'Register a new member account (Initiate OTP)' })
-  @ApiBody({ schema: { properties: { name: { type: 'string' }, email: { type: 'string' }, password: { type: 'string', minLength: 8 }, plan: { type: 'string', enum: ['faith_builder', 'faith_hero', 'faith_fighter'] } }, required: ['name', 'email', 'password', 'plan'] } })
+  @ApiBody({ schema: { properties: { name: { type: 'string' }, email: { type: 'string' }, password: { type: 'string', minLength: 8 }, plan: { type: 'string', enum: ['faith_builder', 'faith_hero', 'faith_fighter'] }, userType: { type: 'string', enum: ['donor', 'recipient'] } }, required: ['name', 'email', 'password'] } })
   @ApiResponse({ status: 200, description: 'OTP sent to email successfully' })
   @ApiResponse({ status: 400, description: 'Missing fields, invalid email format, password < 8, or invalid plan' })
   @ApiResponse({ status: 409, description: 'Email already registered' })
   @Post('register')
   @HttpCode(200)
   async register(
-    @Body() body: { name: string; email: string; password: string; plan?: string },
+    @Body() body: { name: string; email: string; password: string; plan?: string; userType?: string },
   ) {
-    const { name, email, password, plan } = body;
+    const { name, email, password, plan, userType } = body;
     if (!name || !email || !password)
       throw new BadRequestException('Name, email and password are required.');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       throw new BadRequestException('Invalid email address.');
     if (password.length < 8)
       throw new BadRequestException('Password must be at least 8 characters.');
+    if (userType && !['donor', 'recipient'].includes(userType))
+      throw new BadRequestException('Invalid user type.');
 
     const { VALID_PLANS } = await import('../common/plan-config');
     if (plan && !VALID_PLANS.includes(plan as any))
@@ -50,6 +52,7 @@ export class AuthController {
       name,
       passwordHash,
       plan,
+      userType,
     });
 
     return { success: true, message: 'Verification OTP sent to your email.' };
@@ -74,8 +77,8 @@ export class AuthController {
       throw new BadRequestException('No pending registration session found.');
     }
 
-    const { name, passwordHash, plan } = otpDoc.registrationData;
-    const user = await this.authService.registerWithHash(name, email, passwordHash, plan);
+    const { name, passwordHash, plan, userType } = otpDoc.registrationData;
+    const user = await this.authService.registerWithHash(name, email, passwordHash, plan, userType);
 
     const token = this.authService.signToken(user._id.toString(), user.role);
     this.authService.setSessionCookie(res, token);

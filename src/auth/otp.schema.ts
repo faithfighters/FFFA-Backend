@@ -22,6 +22,7 @@ export class Otp {
     name: string;
     passwordHash: string;
     plan?: string;
+    userType?: string;
   };
 }
 

@@ -27,6 +27,10 @@ export class User {
   @Prop({ enum: ['member', 'moderator', 'admin'], default: 'member' })
   role: string;
 
+  /** donor = pays $30 membership upfront, full access | recipient = free signup, submits help videos, paywalled until subscribed */
+  @Prop({ enum: ['donor', 'recipient'], default: 'donor' })
+  userType: string;
+
   @Prop({ enum: ['faith_builder', 'faith_hero', 'faith_fighter'] })
   plan: string;
 

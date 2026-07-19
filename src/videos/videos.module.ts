@@ -6,6 +6,7 @@ import { VideosController } from './videos.controller';
 import { UsersModule } from '../users/users.module';
 import { TranscriptionModule } from '../transcription/transcription.module';
 import { CausesModule } from '../causes/causes.module';
+import { SubscriptionGuard } from '../auth/subscription.guard';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { CausesModule } from '../causes/causes.module';
     TranscriptionModule,
     CausesModule,
   ],
-  providers: [VideosService],
+  providers: [VideosService, SubscriptionGuard],
   controllers: [VideosController],
   exports: [VideosService, MongooseModule],
 })

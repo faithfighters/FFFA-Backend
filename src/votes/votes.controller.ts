@@ -8,6 +8,7 @@ import { CausesService } from '../causes/causes.service';
 import { UsersService } from '../users/users.service';
 import { VideosService } from '../videos/videos.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { SubscriptionGuard } from '../auth/subscription.guard';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -28,7 +29,7 @@ export class VotesController {
   @ApiOperation({ summary: 'Get active cycle, causes, and user\'s existing votes' })
   @ApiResponse({ status: 200, description: 'Cycle, causes, and user votes' })
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   async findAll(@Req() req: any) {
     const cycle = await this.cyclesService.findActive();
     if (!cycle) return { cycle: null, causes: [], userVotes: [] };
@@ -46,7 +47,7 @@ export class VotesController {
   @ApiResponse({ status: 201, description: 'Votes cast successfully' })
   @ApiResponse({ status: 400, description: 'No active cycle, cycle closed, or insufficient votes remaining' })
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   async cast(@Body() body: { causeId: string; count: number; allocation?: Record<string, number>; videoId?: string }, @Req() req: any) {
     // Support both bulk { allocation: { causeId: count } } and single { causeId, count }
     if (body.allocation) {
@@ -90,11 +91,23 @@ export class VotesController {
     const existingVotes = await this.votesService.findByUserAndCycle(userId, cycle._id.toString());
     const perVoteDollars = planKey && planVotes > 0 ? (PLAN_CONFIG[planKey].price * 0.8) / planVotes : 0;
 
-    // Determine target total: positive entries + any existing votes for causes NOT in this allocation
-    const mentionedCauses = new Set(allEntries.map(([id]) => id));
+    // A vote record is keyed by (cause, video) — a user can hold separate vote
+    // allocations for different videos under the same cause. Every lookup below
+    // must match on both, not cause alone, or votes for one video corrupt another.
+    const keyOf = (v: { causeId: unknown; videoId?: unknown }) =>
+      `${(v.causeId as { toString(): string }).toString()}|${v.videoId ? (v.videoId as { toString(): string }).toString() : ''}`;
+    const findExisting = (causeId: string) =>
+      existingVotes.find(v =>
+        v.causeId.toString() === causeId &&
+        (videoId ? v.videoId?.toString() === videoId : !v.videoId),
+      );
+
+    // Determine target total: positive entries + any existing votes for (cause, video)
+    // pairs NOT in this allocation
+    const mentionedKeys = new Set(allEntries.map(([causeId]) => `${causeId}|${videoId ?? ''}`));
     const targetTotal = positiveEntries.reduce((s, [, c]) => s + c, 0);
     const unmentionedVotes = existingVotes
-      .filter(v => !mentionedCauses.has(v.causeId.toString()))
+      .filter(v => !mentionedKeys.has(keyOf(v)))
       .reduce((s, v) => s + v.count, 0);
 
     const planRemaining = user.votesRemaining ?? 0;
@@ -111,7 +124,7 @@ export class VotesController {
     // Validate all video vote restrictions before applying any database changes
     const now = new Date();
     for (const [causeId, targetCount] of positiveEntries) {
-      const already = existingVotes.find(v => v.causeId.toString() === causeId);
+      const already = findExisting(causeId);
       const alreadyCount = already ? already.count : 0;
       const diff = targetCount - alreadyCount;
 
@@ -152,7 +165,7 @@ export class VotesController {
 
     // Clear votes for causes explicitly set to 0 (reallocation)
     for (const [causeId] of zeroEntries) {
-      const existing = existingVotes.find(v => v.causeId.toString() === causeId);
+      const existing = findExisting(causeId);
       if (existing && existing.count > 0) {
         const cause = await this.causesService.findById(causeId);
         if (cause) {
@@ -175,7 +188,7 @@ export class VotesController {
 
     // Apply positive vote allocations (set final target count per cause)
     for (const [causeId, targetCount] of positiveEntries) {
-      const already = existingVotes.find(v => v.causeId.toString() === causeId);
+      const already = findExisting(causeId);
       const alreadyCount = already ? already.count : 0;
       const diff = targetCount - alreadyCount;
 
@@ -286,7 +299,10 @@ export class VotesController {
       throw new BadRequestException(`You only have ${totalAvailable} vote(s) remaining.`);
     }
 
-    const alreadyVoted = existingVotes.find(v => v.causeId.toString() === causeId);
+    const alreadyVoted = existingVotes.find(v =>
+      v.causeId.toString() === causeId &&
+      (videoId ? v.videoId?.toString() === videoId : !v.videoId),
+    );
 
     const activeVideoId = videoId || alreadyVoted?.videoId?.toString();
     if (activeVideoId) {

@@ -8,6 +8,7 @@ import { CausesModule } from '../causes/causes.module';
 import { UsersModule } from '../users/users.module';
 import { VideosModule } from '../videos/videos.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SubscriptionGuard } from '../auth/subscription.guard';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     VideosModule,
     NotificationsModule,
   ],
-  providers: [VotesService],
+  providers: [VotesService, SubscriptionGuard],
   controllers: [VotesController],
   exports: [VotesService, MongooseModule],
 })

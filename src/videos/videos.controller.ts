@@ -9,6 +9,7 @@ import { CausesService } from '../causes/causes.service';
 import { Types } from 'mongoose';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ModeratorGuard } from '../auth/moderator.guard';
+import { SubscriptionGuard } from '../auth/subscription.guard';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 
 @ApiTags('Videos')
@@ -27,21 +28,24 @@ export class VideosController {
   @ApiResponse({ status: 200, description: 'List of approved videos' })
   @Get()
   async findAll(@Query('causeTag') causeTag?: string) {
+    // Only videos with a currently-active voting cycle window are browsable.
+    // Videos with no end date at all are legacy submissions from before the
+    // mandatory voting-cycle-dates requirement — treat them as finished too.
     const filter: Record<string, any> = {
       status: 'approved',
-      $or: [
-        { votingCycleEndDate: { $exists: false } },
-        { votingCycleEndDate: null },
-        { votingCycleEndDate: '' },
-        { votingCycleEndDate: { $gte: new Date().toISOString() } },
-      ],
+      votingCycleEndDate: { $exists: true, $nin: [null, ''], $gte: new Date().toISOString() },
     };
     if (causeTag) filter.causeTag = causeTag;
     const videos = await this.videosService.findAll(filter);
+    // Exclude campaigns that already reached their required vote count
+    const active = videos.filter(v => {
+      const requiredVotes = (v as any).targetAmount ? Math.ceil((v as any).targetAmount / 0.8) : 0;
+      return !(requiredVotes > 0 && ((v as any).voteCount || 0) >= requiredVotes);
+    });
     // Featured video always comes first
     const sorted = [
-      ...videos.filter(v => (v as any).isFeatured),
-      ...videos.filter(v => !(v as any).isFeatured),
+      ...active.filter(v => (v as any).isFeatured),
+      ...active.filter(v => !(v as any).isFeatured),
     ];
     return { videos: sorted };
   }
@@ -227,7 +231,7 @@ export class VideosController {
   /** Like a video submission — requires authentication */
   @ApiOperation({ summary: 'Like a video submission' })
   @ApiCookieAuth('fffa_session')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SubscriptionGuard)
   @Post(':id/like')
   async likeVideo(
     @Param('id') id: string,

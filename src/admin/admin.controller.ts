@@ -145,6 +145,41 @@ export class AdminController {
     return { videos };
   }
 
+  @ApiOperation({ summary: 'List finished campaign videos (100% funded, or expired without reaching target)' })
+  @ApiQuery({ name: 'filter', required: false, description: "'completed' (reached 100%) or 'expired' (cycle over, not funded). Omit for both." })
+  @Get('videos/finished')
+  async getFinishedVideos(@Query('filter') filter?: 'completed' | 'expired') {
+    const videos = await this.videosService.findAll({ status: 'approved' });
+    const now = new Date().toISOString();
+
+    const withProgress = videos.map(v => {
+      const requiredVotes = (v as any).targetAmount ? Math.ceil((v as any).targetAmount / 0.8) : 0;
+      const voteCount = (v as any).voteCount || 0;
+      const isCompleted = requiredVotes > 0 && voteCount >= requiredVotes;
+      const cycleEnded = !(v as any).votingCycleEndDate || (v as any).votingCycleEndDate < now;
+      return { video: v, requiredVotes, voteCount, isCompleted, cycleEnded };
+    });
+
+    // Finished = either fully funded, or its cycle window has ended without reaching the target
+    const finished = withProgress.filter(v => v.isCompleted || v.cycleEnded);
+
+    const scoped = !filter
+      ? finished
+      : filter === 'completed'
+        ? finished.filter(v => v.isCompleted)
+        : finished.filter(v => !v.isCompleted && v.cycleEnded);
+
+    return {
+      videos: scoped.map(v => ({
+        ...(v.video as any).toJSON?.() ?? v.video,
+        requiredVotes: v.requiredVotes,
+        voteCount: v.voteCount,
+        percentFunded: v.requiredVotes > 0 ? Math.round((v.voteCount / v.requiredVotes) * 100) : 0,
+        isCompleted: v.isCompleted,
+      })),
+    };
+  }
+
   @ApiOperation({ summary: 'Set a video as the featured video (clears any previously featured video)' })
   @ApiParam({ name: 'id' })
   @Patch('videos/:id/feature')
