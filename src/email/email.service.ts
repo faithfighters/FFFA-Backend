@@ -1,46 +1,35 @@
 import { Injectable } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
+import sgMail from '@sendgrid/mail';
 import { getFrontendUrl } from '../common/url-resolver';
 
 @Injectable()
 export class EmailService {
-  private transporter: nodemailer.Transporter;
   private from: string;
+  private configured: boolean;
 
   constructor() {
-    this.from = process.env.EMAIL_FROM || 'noreply@faithfightersforamerica.com';
+    this.from = process.env.EMAIL_FROM || '';
+    const apiKey = process.env.SENDGRID_API_KEY;
 
-    const smtpUser = process.env.SMTP_USER || 'rudraL1234@gmail.com';
-    const smtpPass = process.env.SMTP_PASS || 'gzxc lwck fchh yetm';
-
-    // If using the fallback Gmail user, default the host to smtp.gmail.com rather than AWS SES
-    const defaultHost = smtpUser === 'rudraL1234@gmail.com' ? 'smtp.gmail.com' : 'email-smtp.us-east-1.amazonaws.com';
-    const smtpHost = process.env.SMTP_HOST || defaultHost;
-    const smtpPort = Number(process.env.SMTP_PORT) || 587;
-
-    this.transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-    });
+    this.configured = !!apiKey && !!this.from;
+    if (!apiKey) {
+      console.warn('[email] SENDGRID_API_KEY not set — email sending is disabled.');
+    } else if (!this.from) {
+      console.warn('[email] EMAIL_FROM not set — email sending is disabled.');
+    } else {
+      sgMail.setApiKey(apiKey);
+    }
   }
 
   private async send(to: string, subject: string, html: string) {
-    const smtpUser = process.env.SMTP_USER || 'rudraL1234@gmail.com';
-    const smtpPass = process.env.SMTP_PASS || 'gzxc lwck fchh yetm';
-
-    if (!smtpUser || !smtpPass) {
-      console.warn(`[email] SMTP credentials not available — skipping email to ${to}: ${subject}`);
+    if (!this.configured) {
+      console.warn(`[email] SendGrid not configured — skipping email to ${to}: ${subject}`);
       return;
     }
 
     try {
-      const info = await this.transporter.sendMail({ from: this.from, to, subject, html });
-      return info;
+      const [response] = await sgMail.send({ from: this.from, to, subject, html });
+      return response;
     } catch (error) {
       console.error(`[email] Failed to send email to ${to}:`, error);
       throw error;
