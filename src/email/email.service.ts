@@ -1,35 +1,37 @@
 import { Injectable } from '@nestjs/common';
-import sgMail from '@sendgrid/mail';
+import { Resend } from 'resend';
 import { getFrontendUrl } from '../common/url-resolver';
 
 @Injectable()
 export class EmailService {
   private from: string;
   private configured: boolean;
+  private resend: Resend | null = null;
 
   constructor() {
     this.from = process.env.EMAIL_FROM || '';
-    const apiKey = process.env.SENDGRID_API_KEY;
+    const apiKey = process.env.RESEND_API_KEY;
 
     this.configured = !!apiKey && !!this.from;
     if (!apiKey) {
-      console.warn('[email] SENDGRID_API_KEY not set — email sending is disabled.');
+      console.warn('[email] RESEND_API_KEY not set — email sending is disabled.');
     } else if (!this.from) {
       console.warn('[email] EMAIL_FROM not set — email sending is disabled.');
     } else {
-      sgMail.setApiKey(apiKey);
+      this.resend = new Resend(apiKey);
     }
   }
 
   private async send(to: string, subject: string, html: string) {
-    if (!this.configured) {
-      console.warn(`[email] SendGrid not configured — skipping email to ${to}: ${subject}`);
+    if (!this.configured || !this.resend) {
+      console.warn(`[email] Resend not configured — skipping email to ${to}: ${subject}`);
       return;
     }
 
     try {
-      const [response] = await sgMail.send({ from: this.from, to, subject, html });
-      return response;
+      const { data, error } = await this.resend.emails.send({ from: this.from, to, subject, html });
+      if (error) throw error;
+      return data;
     } catch (error) {
       console.error(`[email] Failed to send email to ${to}:`, error);
       throw error;
