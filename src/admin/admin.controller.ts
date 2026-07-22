@@ -68,11 +68,18 @@ export class AdminController {
   @ApiOperation({ summary: 'List all members with subscription info and actual votes cast' })
   @Get('members')
   async getMembers() {
-    const [users, subs, allVotes] = await Promise.all([
+    const [users, subs, allVotes, allVideos] = await Promise.all([
       this.usersService.findAll(),
       this.subsService.findAll(),
       this.votesService.findAll(),
+      this.videosService.findAll(),
     ]);
+
+    // A member is "In Need" if they've submitted at least one help-request video,
+    // regardless of account type (donor or need-help) or that video's review status.
+    const authorsWithRequests = new Set(
+      allVideos.map(v => (v as any).authorId?.toString()).filter(Boolean),
+    );
 
     // Only include members — exclude admins and moderators from the leaderboard
     const members = users
@@ -86,6 +93,7 @@ export class AdminController {
           ...this.usersService.sanitize(u),
           subscription: subs.find(s => s.userId.toString() === uid) || null,
           votesCast,
+          hasSubmittedRequest: authorsWithRequests.has(uid),
         };
       });
 
