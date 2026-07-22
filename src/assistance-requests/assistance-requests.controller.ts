@@ -17,7 +17,8 @@ export class AssistanceRequestsController {
   @ApiOperation({ summary: "List the current member's assistance requests" })
   @Get('mine')
   async findMine(@Req() req: any) {
-    return { requests: await this.requestsService.findByMember(req.user.userId) };
+    const requests = await this.requestsService.findByMember(req.user.userId);
+    return { requests: await this.requestsService.attachVideoInfo(requests) };
   }
 
   /** A single request — only visible to its own member (admins use /admin/assistance-requests instead) */

@@ -219,6 +219,7 @@ export class AdminController {
       votingCycleStartDate?: string;
       votingCycleEndDate?: string;
     },
+    @Req() req: any,
   ) {
     const { status, isReported, reportCount, reportReasons, votingCycleStartDate, votingCycleEndDate } = body;
     if (status && !['approved', 'rejected', 'pending'].includes(status))
@@ -250,6 +251,14 @@ export class AdminController {
     }
     
     const updated = await this.videosService.update(id, updates);
+
+    // Auto-advance any linked assistance request's stage — the admin approving
+    // the video here IS the review decision, so there's no separate manual step.
+    if (status === 'approved') {
+      const reviewer = await this.usersService.findById(req.user.userId);
+      await this.assistanceRequestsService.onVideoApproved(id, req.user.userId, reviewer?.name || req.user.userId);
+    }
+
     return { video: updated };
   }
 
@@ -534,7 +543,8 @@ export class AdminController {
   async getAssistanceRequest(@Param('id') id: string) {
     const request = await this.assistanceRequestsService.findById(id);
     if (!request) throw new NotFoundException('Request not found.');
-    return { request };
+    const [enriched] = await this.assistanceRequestsService.attachVideoInfo([request]);
+    return { request: enriched };
   }
 
   @ApiOperation({ summary: 'Manually create an assistance request (e.g. phone intake, no linked video)' })

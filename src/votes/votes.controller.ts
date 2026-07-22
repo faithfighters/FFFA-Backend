@@ -12,6 +12,7 @@ import { SubscriptionGuard } from '../auth/subscription.guard';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AssistanceRequestsService } from '../assistance-requests/assistance-requests.service';
 
 @ApiTags('Votes')
 @ApiCookieAuth('fffa_session')
@@ -24,6 +25,7 @@ export class VotesController {
     private readonly usersService: UsersService,
     private readonly videosService: VideosService,
     private readonly notifService: NotificationsService,
+    private readonly assistanceRequestsService: AssistanceRequestsService,
   ) {}
 
   @ApiOperation({ summary: 'Get active cycle, causes, and user\'s existing votes' })
@@ -50,16 +52,24 @@ export class VotesController {
   @UseGuards(JwtAuthGuard, SubscriptionGuard)
   async cast(@Body() body: { causeId: string; count: number; allocation?: Record<string, number>; videoId?: string }, @Req() req: any) {
     // Support both bulk { allocation: { causeId: count } } and single { causeId, count }
+    let result;
     if (body.allocation) {
-      return this.castBulk(body.allocation, req.user.userId, body.videoId);
+      result = await this.castBulk(body.allocation, req.user.userId, body.videoId);
+    } else {
+      const { causeId } = body;
+      const count = Math.floor(Number(body.count));
+      if (!causeId || !count || count < 1 || !Number.isFinite(count))
+        throw new BadRequestException('causeId and a positive integer count are required.');
+
+      result = await this.castSingle(causeId, count, req.user.userId, body.videoId);
     }
 
-    const { causeId } = body;
-    const count = Math.floor(Number(body.count));
-    if (!causeId || !count || count < 1 || !Number.isFinite(count))
-      throw new BadRequestException('causeId and a positive integer count are required.');
+    // Keep any linked assistance request's stage in sync with real funding progress.
+    if (body.videoId) {
+      await this.assistanceRequestsService.syncFundingStatus(body.videoId).catch(() => {});
+    }
 
-    return this.castSingle(causeId, count, req.user.userId, body.videoId);
+    return result;
   }
 
   private async castBulk(allocation: Record<string, number>, userId: string, videoId?: string) {

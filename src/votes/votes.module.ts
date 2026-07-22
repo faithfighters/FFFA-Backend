@@ -9,6 +9,7 @@ import { UsersModule } from '../users/users.module';
 import { VideosModule } from '../videos/videos.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SubscriptionGuard } from '../auth/subscription.guard';
+import { AssistanceRequestsModule } from '../assistance-requests/assistance-requests.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { SubscriptionGuard } from '../auth/subscription.guard';
     UsersModule,
     VideosModule,
     NotificationsModule,
+    AssistanceRequestsModule,
   ],
   providers: [VotesService, SubscriptionGuard],
   controllers: [VotesController],

@@ -148,7 +148,7 @@ export class VideosController {
         other: 'other',
       };
       await this.assistanceRequestsService.create({
-        memberId: req.user.userId as any,
+        memberId: new Types.ObjectId(req.user.userId) as any,
         memberName: user?.name || 'Unknown',
         videoId: (video as any)._id ?? (video as any).id,
         causeId: causeIdObj as any,
@@ -221,6 +221,10 @@ export class VideosController {
       votingCycleStartDate: status === 'approved' ? votingCycleStartDate : undefined,
       votingCycleEndDate: status === 'approved' ? votingCycleEndDate : undefined,
     } as any);
+
+    if (status === 'approved') {
+      await this.assistanceRequestsService.onVideoApproved(id, req.user.userId, reviewer?.name || req.user.userId);
+    }
 
     return { video: updated };
   }
