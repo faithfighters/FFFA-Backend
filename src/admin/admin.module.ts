@@ -13,6 +13,7 @@ import { TranscriptionModule } from '../transcription/transcription.module';
 import { AdminSettings, AdminSettingsSchema } from './schemas/admin-settings.schema';
 import { StripeModule } from '../stripe/stripe.module';
 import { PaymentRecord, PaymentRecordSchema } from '../stripe/schemas/payment-record.schema';
+import { AssistanceRequestsModule } from '../assistance-requests/assistance-requests.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { PaymentRecord, PaymentRecordSchema } from '../stripe/schemas/payment-re
     VotesModule,
     TranscriptionModule,
     StripeModule,
+    AssistanceRequestsModule,
   ],
   controllers: [AdminController],
 })

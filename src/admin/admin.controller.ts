@@ -20,6 +20,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PLAN_CONFIG } from '../common/plan-config';
 import { Types } from 'mongoose';
 import { PaymentRecord, PaymentRecordDocument } from '../stripe/schemas/payment-record.schema';
+import { AssistanceRequestsService } from '../assistance-requests/assistance-requests.service';
 
 @ApiTags('Admin')
 @ApiCookieAuth('fffa_session')
@@ -38,6 +39,7 @@ export class AdminController {
     private readonly votesService: VotesService,
     private readonly notifService: NotificationsService,
     private readonly transcriptionService: TranscriptionService,
+    private readonly assistanceRequestsService: AssistanceRequestsService,
   ) {}
 
   // ── Blocked Words ────────────────────────────────────────
@@ -510,6 +512,112 @@ export class AdminController {
     await this.payoutsService.updateBatch(id, { status: 'processing' });
     const result = await this.payoutsService.processBatch(id, req.user.userId);
     return result;
+  }
+
+  // ── Assistance Requests (RFA) ──────────────────────────────
+  @ApiOperation({ summary: 'List assistance requests, optionally filtered' })
+  @Get('assistance-requests')
+  async getAssistanceRequests(
+    @Query('status') status?: string,
+    @Query('category') category?: string,
+    @Query('memberId') memberId?: string,
+  ) {
+    const filter: any = {};
+    if (status) filter.status = status;
+    if (category) filter.category = category;
+    if (memberId) filter.memberId = new Types.ObjectId(memberId);
+    return { requests: await this.assistanceRequestsService.findAll(filter) };
+  }
+
+  @ApiOperation({ summary: 'Get a single assistance request' })
+  @Get('assistance-requests/:id')
+  async getAssistanceRequest(@Param('id') id: string) {
+    const request = await this.assistanceRequestsService.findById(id);
+    if (!request) throw new NotFoundException('Request not found.');
+    return { request };
+  }
+
+  @ApiOperation({ summary: 'Manually create an assistance request (e.g. phone intake, no linked video)' })
+  @Post('assistance-requests')
+  async createAssistanceRequest(
+    @Body() body: {
+      memberId: string; memberName: string; requestTitle: string; category: string;
+      description: string; amountRequested: number; documentUrls?: string[];
+      videoId?: string; causeId?: string;
+    },
+    @Req() req: any,
+  ) {
+    const { memberId, memberName, requestTitle, category, description, amountRequested } = body;
+    if (!memberId || !memberName || !requestTitle || !category || !description || !amountRequested)
+      throw new BadRequestException('memberId, memberName, requestTitle, category, description and amountRequested are required.');
+
+    const admin = await this.usersService.findById(req.user.userId);
+    const request = await this.assistanceRequestsService.create({
+      memberId: new Types.ObjectId(memberId) as any,
+      memberName,
+      requestTitle,
+      category,
+      description,
+      amountRequested: Number(amountRequested),
+      documentUrls: body.documentUrls || [],
+      videoId: body.videoId ? new Types.ObjectId(body.videoId) as any : undefined,
+      causeId: body.causeId ? new Types.ObjectId(body.causeId) as any : undefined,
+      status: 'submitted',
+      createdBy: 'admin',
+      createdByName: admin?.name || req.user.userId,
+    });
+    return { request };
+  }
+
+  @ApiOperation({ summary: 'Update an assistance request\'s case-info fields' })
+  @Patch('assistance-requests/:id')
+  async updateAssistanceRequest(@Param('id') id: string, @Body() updates: any) {
+    const updated = await this.assistanceRequestsService.update(id, updates);
+    if (!updated) throw new NotFoundException('Request not found.');
+    return { request: updated };
+  }
+
+  @ApiOperation({ summary: 'Advance/change an assistance request\'s status' })
+  @Patch('assistance-requests/:id/status')
+  async updateAssistanceRequestStatus(
+    @Param('id') id: string,
+    @Body() body: { status: string; note?: string },
+    @Req() req: any,
+  ) {
+    const { status, note } = body;
+    if (!status) throw new BadRequestException('status is required.');
+    const admin = await this.usersService.findById(req.user.userId);
+    const updated = await this.assistanceRequestsService.setStatus(
+      id, status, req.user.userId, admin?.name || req.user.userId, note,
+    );
+    if (!updated) throw new NotFoundException('Request not found.');
+    return { request: updated };
+  }
+
+  @ApiOperation({ summary: 'Update an assistance request\'s financial-tracking fields' })
+  @Patch('assistance-requests/:id/financials')
+  async updateAssistanceRequestFinancials(
+    @Param('id') id: string,
+    @Body() body: {
+      amountApproved?: number; amountPaid?: number; paymentDate?: string;
+      paymentMethod?: string; paymentReferenceNumber?: string; internalNotes?: string;
+      paymentCompleted?: boolean;
+    },
+  ) {
+    const updated = await this.assistanceRequestsService.updateFinancials(id, body);
+    if (!updated) throw new NotFoundException('Request not found.');
+    return { request: updated };
+  }
+
+  @ApiOperation({ summary: 'Update an assistance request\'s payment-details fields' })
+  @Patch('assistance-requests/:id/payment-details')
+  async updateAssistanceRequestPaymentDetails(
+    @Param('id') id: string,
+    @Body() body: { fundsUsage?: string; paymentRecipientType?: string; paymentRecipientName?: string },
+  ) {
+    const updated = await this.assistanceRequestsService.updatePaymentDetails(id, body);
+    if (!updated) throw new NotFoundException('Request not found.');
+    return { request: updated };
   }
 
   // ── Analytics ─────────────────────────────────────────────

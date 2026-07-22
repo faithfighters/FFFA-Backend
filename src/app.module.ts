@@ -21,6 +21,7 @@ import { UploadModule } from './upload/upload.module';
 import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { EventsModule } from './events/events.module';
+import { AssistanceRequestsModule } from './assistance-requests/assistance-requests.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { EventsModule } from './events/events.module';
     EmailModule,
     NotificationsModule,
     EventsModule,
+    AssistanceRequestsModule,
   ],
   providers: [
     // Apply ThrottlerGuard globally — use @SkipThrottle() to opt out per route

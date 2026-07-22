@@ -15,6 +15,27 @@ const toJSON = {
   },
 };
 
+// A nested field named "type" clashes with Mongoose's own schema-path
+// declaration syntax when defined as a raw object literal — using an
+// explicit sub-schema class avoids that ambiguity.
+@Schema({ _id: false })
+class PaymentDestination {
+  @Prop({ enum: ['hospital', 'utility', 'rent', 'other'] })
+  type?: string;
+
+  @Prop()
+  institutionName?: string;
+
+  @Prop()
+  address?: string;
+
+  @Prop()
+  phone?: string;
+
+  @Prop()
+  accountNumber?: string;
+}
+
 @Schema({ timestamps: true, toJSON })
 export class Video {
   @Prop({ required: true })
@@ -56,22 +77,8 @@ export class Video {
   @Prop({ enum: ['pending', 'paid'], default: 'pending' })
   billPayStatus: string;
 
-  @Prop({
-    type: {
-      type: { type: String, enum: ['hospital', 'utility', 'rent', 'other'] },
-      institutionName: String,
-      address: String,
-      phone: String,
-      accountNumber: String,
-    },
-  })
-  paymentDestination: {
-    type: string;
-    institutionName?: string;
-    address?: string;
-    phone?: string;
-    accountNumber?: string;
-  };
+  @Prop({ type: PaymentDestination })
+  paymentDestination: PaymentDestination;
 
   // ── Submitter contact ───────────────────────────────────
   @Prop()

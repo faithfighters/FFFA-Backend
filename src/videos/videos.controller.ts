@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ModeratorGuard } from '../auth/moderator.guard';
 import { SubscriptionGuard } from '../auth/subscription.guard';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
+import { AssistanceRequestsService } from '../assistance-requests/assistance-requests.service';
 
 @ApiTags('Videos')
 @Controller('videos')
@@ -20,6 +21,7 @@ export class VideosController {
     private readonly usersService: UsersService,
     private readonly transcriptionService: TranscriptionService,
     private readonly causesService: CausesService,
+    private readonly assistanceRequestsService: AssistanceRequestsService,
   ) {}
 
   /** Public — approved videos only, featured video first */
@@ -133,6 +135,34 @@ export class VideosController {
       (video as any)._id?.toString() ?? (video as any).id,
       videoUrl,
     );
+
+    // If this looks like an assistance-style submission (beneficiary/amount/payment
+    // destination all present, matching the submit-video flow), auto-create a linked
+    // RFA case for admins to manage — the plain "reel" submission flow doesn't
+    // collect these fields, so it never triggers this.
+    if (body.beneficiaryName && targetAmount && body.paymentDestination) {
+      const recipientTypeMap: Record<string, string> = {
+        hospital: 'vendor',
+        utility: 'utility_company',
+        rent: 'landlord',
+        other: 'other',
+      };
+      await this.assistanceRequestsService.create({
+        memberId: req.user.userId as any,
+        memberName: user?.name || 'Unknown',
+        videoId: (video as any)._id ?? (video as any).id,
+        causeId: causeIdObj as any,
+        requestTitle: title,
+        category: causeTag,
+        description,
+        amountRequested: targetAmount,
+        status: 'submitted',
+        paymentRecipientType: recipientTypeMap[body.paymentDestination.type] || 'other',
+        paymentRecipientName: body.paymentDestination.institutionName || '',
+        createdBy: 'member',
+        createdByName: user?.name || 'Unknown',
+      });
+    }
 
     return { video };
   }

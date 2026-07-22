@@ -7,6 +7,7 @@ import { UsersModule } from '../users/users.module';
 import { TranscriptionModule } from '../transcription/transcription.module';
 import { CausesModule } from '../causes/causes.module';
 import { SubscriptionGuard } from '../auth/subscription.guard';
+import { AssistanceRequestsModule } from '../assistance-requests/assistance-requests.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { SubscriptionGuard } from '../auth/subscription.guard';
     UsersModule,
     TranscriptionModule,
     CausesModule,
+    AssistanceRequestsModule,
   ],
   providers: [VideosService, SubscriptionGuard],
   controllers: [VideosController],
