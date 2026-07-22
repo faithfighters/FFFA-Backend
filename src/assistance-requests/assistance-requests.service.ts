@@ -55,6 +55,14 @@ export class AssistanceRequestsService {
         json.videoUrl = video.videoUrl;
         json.thumbnailUrl = video.thumbnailUrl;
         json.voteCount = video.voteCount || 0;
+        // Every other field the member actually filled in on the submission
+        // form — not stored on AssistanceRequest itself, so surface it from
+        // the linked video for a detail view showing everything they submitted.
+        json.beneficiaryName = video.beneficiaryName;
+        json.urgencyReason = video.urgencyReason;
+        json.submitterPhone = video.submitterPhone;
+        json.submitterEmail = video.submitterEmail;
+        json.paymentDestination = video.paymentDestination;
       }
       return json;
     });
