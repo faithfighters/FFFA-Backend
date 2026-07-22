@@ -8,7 +8,7 @@ export class VideosService {
   constructor(@InjectModel(Video.name) private videoModel: Model<VideoDocument>) {}
 
   findAll(filter?: Record<string, any>): Promise<VideoDocument[]> {
-    return this.videoModel.find(filter || {}).exec();
+    return this.videoModel.find(filter || {}).sort({ createdAt: -1 }).exec();
   }
 
   findById(id: string): Promise<VideoDocument | null> {
