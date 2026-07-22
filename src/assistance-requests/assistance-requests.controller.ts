@@ -66,4 +66,30 @@ export class AssistanceRequestsController {
     delete json.internalNotes;
     return { request: json };
   }
+
+  /**
+   * Public-to-members "impact story" view — any authenticated member can see this
+   * (not just the recipient or voters), matching how videos are already publicly
+   * viewable elsewhere. Only exposes story-safe fields, never internal notes or
+   * financial details.
+   */
+  @ApiOperation({ summary: "Get a recipient's impact story (testimonial + before/after) for any authenticated member" })
+  @Get(':id/impact')
+  async getImpactStory(@Param('id') id: string) {
+    const request = await this.requestsService.findById(id);
+    if (!request) throw new NotFoundException('Request not found.');
+    if (!request.testimonial || request.testimonial.status !== 'submitted')
+      throw new NotFoundException('No testimonial available for this request yet.');
+
+    return {
+      story: {
+        id: (request as any)._id?.toString() ?? (request as any).id,
+        memberName: request.memberName,
+        requestTitle: request.requestTitle,
+        category: request.category,
+        description: request.description,
+        testimonial: request.testimonial,
+      },
+    };
+  }
 }

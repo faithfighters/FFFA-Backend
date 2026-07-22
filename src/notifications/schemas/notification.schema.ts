@@ -11,7 +11,8 @@ export type NotificationType =
   | 'votes_added'
   | 'vote_cast'
   | 'cycle_closed'
-  | 'welcome';
+  | 'welcome'
+  | 'testimonial_received';
 
 @Schema({ timestamps: true })
 export class Notification {

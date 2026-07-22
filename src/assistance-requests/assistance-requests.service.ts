@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { AssistanceRequest, AssistanceRequestDocument } from './schemas/assistance-request.schema';
+import { Vote, VoteDocument } from '../votes/schemas/vote.schema';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class AssistanceRequestsService {
   constructor(
     @InjectModel(AssistanceRequest.name) private model: Model<AssistanceRequestDocument>,
+    @InjectModel(Vote.name) private voteModel: Model<VoteDocument>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   findAll(filter?: Record<string, any>): Promise<AssistanceRequestDocument[]> {
@@ -106,6 +110,32 @@ export class AssistanceRequestsService {
       ];
     }
 
-    return this.model.findByIdAndUpdate(id, updates, { new: true }).exec();
+    const updated = await this.model.findByIdAndUpdate(id, updates, { new: true }).exec();
+    if (updated) await this.notifyVoters(updated);
+    return updated;
+  }
+
+  /**
+   * Closes the feedback loop: every distinct member who voted on the linked video
+   * gets a notification once the recipient's testimonial is in. Silently no-ops if
+   * there's no linked video (e.g. an admin-manual case with no submission behind it).
+   */
+  private async notifyVoters(request: AssistanceRequestDocument): Promise<void> {
+    if (!request.videoId) return;
+
+    const votes = await this.voteModel.find({ videoId: request.videoId }).exec();
+    const voterIds = [...new Set(votes.map(v => v.userId.toString()))]
+      .filter(uid => uid !== request.memberId.toString());
+
+    await Promise.all(voterIds.map(userId =>
+      this.notificationsService.create({
+        userId,
+        type: 'testimonial_received',
+        title: 'Your vote made a difference! ❤️',
+        message: 'Because of your vote, we were able to help another member of the Faith Fighters family.',
+        link: `/dashboard/impact/${(request as any)._id?.toString() ?? (request as any).id}`,
+        imageUrl: request.testimonial?.photoUrl || undefined,
+      }),
+    ));
   }
 }
