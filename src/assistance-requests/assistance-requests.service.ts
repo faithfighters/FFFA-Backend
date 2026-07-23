@@ -5,6 +5,8 @@ import { AssistanceRequest, AssistanceRequestDocument } from './schemas/assistan
 import { Vote, VoteDocument } from '../votes/schemas/vote.schema';
 import { Video, VideoDocument } from '../videos/schemas/video.schema';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UsersService } from '../users/users.service';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class AssistanceRequestsService {
@@ -13,6 +15,8 @@ export class AssistanceRequestsService {
     @InjectModel(Vote.name) private voteModel: Model<VoteDocument>,
     @InjectModel(Video.name) private videoModel: Model<VideoDocument>,
     private readonly notificationsService: NotificationsService,
+    private readonly usersService: UsersService,
+    private readonly emailService: EmailService,
   ) {}
 
   findAll(filter?: Record<string, any>): Promise<AssistanceRequestDocument[]> {
@@ -202,6 +206,85 @@ export class AssistanceRequestsService {
     const updated = await this.model.findByIdAndUpdate(id, updates, { new: true }).exec();
     if (updated) await this.notifyVoters(updated);
     return updated;
+  }
+
+  /** Story-safe projection shared by the single impact-story view and the public testimonials gallery — never internal notes or financial details. */
+  toPublicStory(request: AssistanceRequestDocument) {
+    return {
+      id: (request as any)._id?.toString() ?? (request as any).id,
+      memberName: request.memberName,
+      requestTitle: request.requestTitle,
+      category: request.category,
+      description: request.description,
+      testimonial: request.testimonial,
+    };
+  }
+
+  /** Every submitted testimonial, newest first — the public "Testimonial Videos" gallery. */
+  findAllTestimonials(): Promise<AssistanceRequestDocument[]> {
+    return this.model
+      .find({ 'testimonial.status': 'submitted' })
+      .sort({ 'testimonial.submittedAt': -1 })
+      .exec();
+  }
+
+  /**
+   * Admin action: email the recipient that their campaign hit 100% and invite
+   * them to submit a testimonial. Only valid once payment is actually marked
+   * complete — by that point the funding goal and payment details are both
+   * already confirmed (payment_completed is only reachable after both), so
+   * there's no separate "votes are 100%" check needed here.
+   */
+  async requestTestimonial(id: string): Promise<AssistanceRequestDocument | null> {
+    const request = await this.model.findById(id).exec();
+    if (!request) return null;
+    if (request.status !== 'payment_completed') return null;
+
+    const member = await this.usersService.findById(request.memberId.toString());
+    if (member?.email) {
+      await this.emailService
+        .sendTestimonialRequest(member.email, request.memberName, request.requestTitle)
+        .catch(() => {});
+    }
+
+    return this.model.findByIdAndUpdate(
+      id,
+      { testimonialRequestedAt: new Date().toISOString() },
+      { new: true },
+    ).exec();
+  }
+
+  /**
+   * Admin action: removes a testimonial that didn't meet the bar (incomplete,
+   * bad-faith, etc). Resets the testimonial back to unsubmitted rather than a
+   * permanent "rejected" state, so the member can submit a corrected one — the
+   * case's own status is unaffected except that testimonial_received (which
+   * only makes sense once a testimonial exists) rolls back to payment_completed.
+   */
+  async rejectTestimonial(id: string, adminId: string, adminName: string): Promise<AssistanceRequestDocument | null> {
+    const request = await this.model.findById(id).exec();
+    if (!request) return null;
+    if (request.testimonial?.status !== 'submitted') return null;
+
+    const updates: Partial<AssistanceRequest> & { statusHistory: any } = {
+      testimonial: { status: 'pending_request' } as any,
+      statusHistory: [
+        ...(request.statusHistory || []),
+        {
+          status: request.status === 'testimonial_received' ? 'payment_completed' : request.status,
+          changedAt: new Date().toISOString(),
+          changedBy: adminId,
+          changedByName: adminName,
+          note: 'Testimonial rejected and removed by admin.',
+        },
+      ],
+    } as any;
+
+    if (request.status === 'testimonial_received') {
+      (updates as any).status = 'payment_completed';
+    }
+
+    return this.model.findByIdAndUpdate(id, updates, { new: true }).exec();
   }
 
   /**

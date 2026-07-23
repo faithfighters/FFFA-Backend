@@ -138,6 +138,10 @@ export class AssistanceRequest {
   @Prop({ type: Testimonial, default: () => ({}) })
   testimonial: Testimonial;
 
+  /** When the admin last sent the "share your testimonial" email — lets the UI show Sent/Resend instead of a blind button. */
+  @Prop()
+  testimonialRequestedAt: string;
+
   // ── Admin audit ──────────────────────────────────────────
   @Prop({ type: Types.ObjectId, ref: 'User' })
   reviewedBy: Types.ObjectId;

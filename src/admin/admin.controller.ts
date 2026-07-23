@@ -630,6 +630,23 @@ export class AdminController {
     return { request: updated };
   }
 
+  @ApiOperation({ summary: "Email the recipient that their campaign hit 100% and invite them to submit a testimonial" })
+  @Post('assistance-requests/:id/request-testimonial')
+  async requestAssistanceRequestTestimonial(@Param('id') id: string) {
+    const updated = await this.assistanceRequestsService.requestTestimonial(id);
+    if (!updated) throw new BadRequestException('Request not found, or payment is not yet marked completed.');
+    return { request: updated };
+  }
+
+  @ApiOperation({ summary: 'Reject and remove a submitted testimonial, so the member can submit a corrected one' })
+  @Post('assistance-requests/:id/testimonial/reject')
+  async rejectAssistanceRequestTestimonial(@Param('id') id: string, @Req() req: any) {
+    const admin = await this.usersService.findById(req.user.userId);
+    const updated = await this.assistanceRequestsService.rejectTestimonial(id, req.user.userId, admin?.name || req.user.userId);
+    if (!updated) throw new BadRequestException('Request not found, or no testimonial to reject.');
+    return { request: updated };
+  }
+
   // ── Analytics ─────────────────────────────────────────────
   @ApiOperation({ summary: 'Platform analytics — members, revenue, subscriptions' })
   @Get('analytics')

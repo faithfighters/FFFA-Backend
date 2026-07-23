@@ -82,15 +82,14 @@ export class AssistanceRequestsController {
     if (!request.testimonial || request.testimonial.status !== 'submitted')
       throw new NotFoundException('No testimonial available for this request yet.');
 
-    return {
-      story: {
-        id: (request as any)._id?.toString() ?? (request as any).id,
-        memberName: request.memberName,
-        requestTitle: request.requestTitle,
-        category: request.category,
-        description: request.description,
-        testimonial: request.testimonial,
-      },
-    };
+    return { story: this.requestsService.toPublicStory(request) };
+  }
+
+  /** Public "Testimonial Videos" gallery — every submitted testimonial, visible to any authenticated member. */
+  @ApiOperation({ summary: 'List every submitted testimonial for the public gallery' })
+  @Get('testimonials/all')
+  async getAllTestimonials() {
+    const requests = await this.requestsService.findAllTestimonials();
+    return { stories: requests.map(r => this.requestsService.toPublicStory(r)) };
   }
 }

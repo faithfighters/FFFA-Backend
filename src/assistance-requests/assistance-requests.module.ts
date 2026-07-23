@@ -6,6 +6,7 @@ import { AssistanceRequestsController } from './assistance-requests.controller';
 import { UsersModule } from '../users/users.module';
 import { Vote, VoteSchema } from '../votes/schemas/vote.schema';
 import { Video, VideoSchema } from '../videos/schemas/video.schema';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { Video, VideoSchema } from '../videos/schemas/video.schema';
       { name: Video.name, schema: VideoSchema },
     ]),
     UsersModule,
+    EmailModule,
   ],
   controllers: [AssistanceRequestsController],
   providers: [AssistanceRequestsService],

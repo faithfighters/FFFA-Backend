@@ -137,6 +137,24 @@ export class EmailService {
     );
   }
 
+  async sendTestimonialRequest(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'Your campaign reached 100% — share your story 🎉',
+      `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
+        <h2 style="color:#E7421B;">Congratulations, ${name}! 🎉</h2>
+        <p>Your campaign <strong>"${requestTitle}"</strong> has received 100% of its required votes, and payment has been arranged.</p>
+        <p>Because of votes like theirs, the Faith Fighters community came together and made this happen. We'd love for you to share how this support helped you — it means the world to the members who voted, and inspires others to keep giving.</p>
+        <a href="${getFrontendUrl()}/dashboard/requests" style="display:inline-block;background:#E7421B;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
+          Share Your Testimonial →
+        </a>
+        <p style="margin-top:16px;color:#666;font-size:13px;">Click the button above, find this request under "My Requests," and tap "Share Your Testimonial" — you can submit a short video or write a few words about your experience.</p>
+      </div>
+      `,
+    );
+  }
+
   // ── Voting Emails ────────────────────────────────────────
 
   async sendVoteConfirmation(to: string, name: string, causes: string[]) {
