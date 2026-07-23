@@ -137,6 +137,120 @@ export class EmailService {
     );
   }
 
+  /** Shared shell for the assistance-request lifecycle emails below — keeps six near-identical templates down to one render path. */
+  private renderAssistanceRequestEmail(name: string, heading: string, body: string, ctaLabel = 'View My Requests', ctaHref = `${getFrontendUrl()}/dashboard/requests`) {
+    return `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
+        <h2 style="color:#E7421B;">${heading}</h2>
+        <p>Hi ${name},</p>
+        ${body}
+        <a href="${ctaHref}" style="display:inline-block;background:#E7421B;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
+          ${ctaLabel} →
+        </a>
+      </div>
+    `;
+  }
+
+  async sendAssistanceRequestReceived(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'We received your assistance request',
+      this.renderAssistanceRequestEmail(
+        name,
+        'Request Received',
+        `<p>Your request <strong>"${requestTitle}"</strong> has been submitted and is now awaiting review by our team. We'll email you at each step as it moves forward.</p>`,
+      ),
+    );
+  }
+
+  async sendAssistanceRequestUnderReview(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'Your assistance request is under review',
+      this.renderAssistanceRequestEmail(
+        name,
+        'Under Review',
+        `<p>Our team has started reviewing your request <strong>"${requestTitle}"</strong>. We'll let you know as soon as a decision is made.</p>`,
+      ),
+    );
+  }
+
+  async sendAssistanceRequestApproved(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'Your assistance request has been approved!',
+      this.renderAssistanceRequestEmail(
+        name,
+        'Request Approved 🎉',
+        `<p>Great news — your request <strong>"${requestTitle}"</strong> has been approved and is now eligible for member votes. The more votes it receives, the sooner it reaches its funding goal.</p>`,
+      ),
+    );
+  }
+
+  async sendAssistanceRequestFundingStarted(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'Your campaign has started receiving votes!',
+      this.renderAssistanceRequestEmail(
+        name,
+        'Votes Are Coming In',
+        `<p>Members of the Faith Fighters community have started voting for your request <strong>"${requestTitle}"</strong>. Keep sharing your story — every vote brings you closer to your goal.</p>`,
+      ),
+    );
+  }
+
+  async sendAssistanceRequestFundingComplete(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'Your campaign reached its funding goal! 🎉',
+      this.renderAssistanceRequestEmail(
+        name,
+        'Funding Goal Reached 🎉',
+        `<p>Your request <strong>"${requestTitle}"</strong> has received 100% of its required votes! Our team is now arranging payment.</p>`,
+      ),
+    );
+  }
+
+  async sendAssistanceRequestPaymentCompleted(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'Payment for your assistance request is complete',
+      this.renderAssistanceRequestEmail(
+        name,
+        'Payment Completed ✅',
+        `<p>Payment for your request <strong>"${requestTitle}"</strong> has been completed. Thank you for being part of the Faith Fighters community — we'll be in touch shortly to invite you to share your story.</p>`,
+      ),
+    );
+  }
+
+  async sendAssistanceRequestCaseClosed(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'Your assistance request case is now closed',
+      this.renderAssistanceRequestEmail(
+        name,
+        'Case Closed — Thank You 🙏',
+        `<p>Your request <strong>"${requestTitle}"</strong> is now fully closed out. Thank you for sharing your story with the community — it inspires others to keep giving.</p>`,
+        'View Testimonial Videos',
+        `${getFrontendUrl()}/dashboard/testimonials`,
+      ),
+    );
+  }
+
+  async sendTestimonialRejected(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'Action needed: your testimonial for review',
+      this.renderAssistanceRequestEmail(
+        name,
+        'Your Testimonial Needs Another Look',
+        `<p>Thanks for submitting a testimonial for <strong>"${requestTitle}"</strong>. Our team wasn't able to publish it as submitted (missing details or information that needs a correction), so it's been removed. You're welcome to submit a new one any time.</p>`,
+        'Submit a New Testimonial',
+        `${getFrontendUrl()}/dashboard/requests`,
+      ),
+    );
+  }
+
   async sendTestimonialRequest(to: string, name: string, requestTitle: string) {
     await this.send(
       to,

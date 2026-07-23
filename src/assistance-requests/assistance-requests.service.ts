@@ -72,8 +72,10 @@ export class AssistanceRequestsService {
     });
   }
 
-  create(data: Partial<AssistanceRequest>): Promise<AssistanceRequestDocument> {
-    return this.model.create(data);
+  async create(data: Partial<AssistanceRequest>): Promise<AssistanceRequestDocument> {
+    const request = await this.model.create(data);
+    this.notifyMemberOfStatus(request, 'submitted').catch(() => {});
+    return request;
   }
 
   update(id: string, updates: Partial<AssistanceRequest>): Promise<AssistanceRequestDocument | null> {
@@ -89,6 +91,7 @@ export class AssistanceRequestsService {
   ): Promise<AssistanceRequestDocument | null> {
     const request = await this.model.findById(id).exec();
     if (!request) return null;
+    const statusChanged = request.status !== status;
 
     const historyEntry = {
       status,
@@ -109,7 +112,40 @@ export class AssistanceRequestsService {
       (updates as any).reviewedAt = new Date().toISOString();
     }
 
-    return this.model.findByIdAndUpdate(id, updates, { new: true }).exec();
+    const updated = await this.model.findByIdAndUpdate(id, updates, { new: true }).exec();
+    if (updated && statusChanged) this.notifyMemberOfStatus(updated, status).catch(() => {});
+    return updated;
+  }
+
+  /**
+   * Central email hook for the RFA lifecycle — every status transition (manual
+   * admin action or system auto-advance) routes through here, so there's a
+   * single, solid place that keeps the recipient informed at each step instead
+   * of scattering ad-hoc email calls across every place status can change.
+   */
+  private async notifyMemberOfStatus(request: AssistanceRequestDocument, status: string): Promise<void> {
+    const member = await this.usersService.findById(request.memberId.toString());
+    if (!member?.email) return;
+
+    const { requestTitle } = request;
+    switch (status) {
+      case 'submitted':
+        return this.emailService.sendAssistanceRequestReceived(member.email, request.memberName, requestTitle);
+      case 'under_review':
+        return this.emailService.sendAssistanceRequestUnderReview(member.email, request.memberName, requestTitle);
+      case 'approved':
+        return this.emailService.sendAssistanceRequestApproved(member.email, request.memberName, requestTitle);
+      case 'funding_in_progress':
+        return this.emailService.sendAssistanceRequestFundingStarted(member.email, request.memberName, requestTitle);
+      case 'payment_scheduled':
+        return this.emailService.sendAssistanceRequestFundingComplete(member.email, request.memberName, requestTitle);
+      case 'payment_completed':
+        return this.emailService.sendAssistanceRequestPaymentCompleted(member.email, request.memberName, requestTitle);
+      case 'case_closed':
+        return this.emailService.sendAssistanceRequestCaseClosed(member.email, request.memberName, requestTitle);
+      default:
+        return;
+    }
   }
 
   async updateFinancials(id: string, updates: Partial<AssistanceRequest>): Promise<AssistanceRequestDocument | null> {
@@ -284,7 +320,16 @@ export class AssistanceRequestsService {
       (updates as any).status = 'payment_completed';
     }
 
-    return this.model.findByIdAndUpdate(id, updates, { new: true }).exec();
+    const updated = await this.model.findByIdAndUpdate(id, updates, { new: true }).exec();
+    if (updated) {
+      const member = await this.usersService.findById(updated.memberId.toString());
+      if (member?.email) {
+        this.emailService
+          .sendTestimonialRejected(member.email, updated.memberName, updated.requestTitle)
+          .catch(() => {});
+      }
+    }
+    return updated;
   }
 
   /**
