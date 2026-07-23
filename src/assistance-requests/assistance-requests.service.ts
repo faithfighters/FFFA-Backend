@@ -288,6 +288,22 @@ export class AssistanceRequestsService {
   }
 
   /**
+   * Admin action: signs off on a submitted testimonial and closes the case —
+   * the final step in the RFA lifecycle. The testimonial is already visible
+   * to the public gallery as soon as it's submitted (approval isn't a
+   * publish gate, just the admin's review record); this only exists so an
+   * admin can mark the case fully done instead of leaving it sitting at
+   * "testimonial_received" indefinitely.
+   */
+  async approveTestimonial(id: string, adminId: string, adminName: string): Promise<AssistanceRequestDocument | null> {
+    const request = await this.model.findById(id).exec();
+    if (!request) return null;
+    if (request.testimonial?.status !== 'submitted') return null;
+
+    return this.setStatus(id, 'case_closed', adminId, adminName, 'Testimonial approved by admin; case closed.');
+  }
+
+  /**
    * Closes the feedback loop: every distinct member who voted on the linked video
    * gets a notification once the recipient's testimonial is in. Silently no-ops if
    * there's no linked video (e.g. an admin-manual case with no submission behind it).

@@ -647,6 +647,15 @@ export class AdminController {
     return { request: updated };
   }
 
+  @ApiOperation({ summary: 'Approve a submitted testimonial and close the case' })
+  @Post('assistance-requests/:id/testimonial/approve')
+  async approveAssistanceRequestTestimonial(@Param('id') id: string, @Req() req: any) {
+    const admin = await this.usersService.findById(req.user.userId);
+    const updated = await this.assistanceRequestsService.approveTestimonial(id, req.user.userId, admin?.name || req.user.userId);
+    if (!updated) throw new BadRequestException('Request not found, or no testimonial to approve.');
+    return { request: updated };
+  }
+
   // ── Analytics ─────────────────────────────────────────────
   @ApiOperation({ summary: 'Platform analytics — members, revenue, subscriptions' })
   @Get('analytics')
