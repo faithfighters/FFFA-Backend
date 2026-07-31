@@ -218,13 +218,14 @@ export class AdminController {
       reportReasons?: string[];
       votingCycleStartDate?: string;
       votingCycleEndDate?: string;
+      closureReason?: string;
     },
     @Req() req: any,
   ) {
-    const { status, isReported, reportCount, reportReasons, votingCycleStartDate, votingCycleEndDate } = body;
-    if (status && !['approved', 'rejected', 'pending'].includes(status))
+    const { status, isReported, reportCount, reportReasons, votingCycleStartDate, votingCycleEndDate, closureReason } = body;
+    if (status && !['approved', 'rejected', 'pending', 'closed'].includes(status))
       throw new BadRequestException('Invalid status.');
-    
+
     if (status === 'approved') {
       if (!votingCycleStartDate || !votingCycleEndDate) {
         throw new BadRequestException('votingCycleStartDate and votingCycleEndDate are required for approval.');
@@ -236,7 +237,14 @@ export class AdminController {
 
     const video = await this.videosService.findById(id);
     if (!video) throw new NotFoundException('Video not found.');
-    
+
+    if (status === 'closed') {
+      if ((video as any).status !== 'approved')
+        throw new BadRequestException('Only approved campaigns can be closed.');
+      if (!closureReason?.trim())
+        throw new BadRequestException('closureReason is required to close a campaign.');
+    }
+
     const updates: any = {};
     if (status !== undefined) updates.status = status;
     if (isReported !== undefined) updates.isReported = isReported;
@@ -249,7 +257,14 @@ export class AdminController {
       updates.votingCycleStartDate = undefined;
       updates.votingCycleEndDate = undefined;
     }
-    
+    if (status === 'closed') {
+      updates.closureReason = closureReason;
+      const closer = await this.usersService.findById(req.user.userId);
+      updates.moderatedBy = req.user.userId;
+      updates.moderatedByName = closer?.name || req.user.userId;
+      updates.moderatedAt = new Date().toISOString();
+    }
+
     const updated = await this.videosService.update(id, updates);
 
     // Auto-advance any linked assistance request's stage — the admin approving

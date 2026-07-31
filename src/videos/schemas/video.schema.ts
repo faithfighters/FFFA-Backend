@@ -62,7 +62,7 @@ export class Video {
   @Prop({ required: true })
   causeTag: string;
 
-  @Prop({ enum: ['pending', 'approved', 'rejected'], default: 'pending' })
+  @Prop({ enum: ['pending', 'approved', 'rejected', 'closed'], default: 'pending' })
   status: string;
 
   @Prop()
@@ -114,6 +114,10 @@ export class Video {
   /** Internal note visible only to admins/moderators */
   @Prop()
   moderationNote: string;
+
+  /** Reason shown to the submitter when an approved campaign is closed early (e.g. underperforming) */
+  @Prop()
+  closureReason: string;
 
   // ── Featured ───────────────────────────────────────────
   @Prop({ default: false })
