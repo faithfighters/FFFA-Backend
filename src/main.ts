@@ -22,8 +22,12 @@ async function bootstrap() {
   app.use(cookieParser());
 
   const allowedOrigins = [
-    // All allowed origins come from env (comma-separated)
-    ...(process.env.FRONTEND_URL || 'https://stage.faithfightersforamerica.com').split(',').map(o => o.trim()),
+    // Origins from env (comma-separated) — additive to the known production/stage domains below,
+    // so a misconfigured or incomplete FRONTEND_URL never locks out either environment.
+    ...(process.env.FRONTEND_URL || '').split(',').map(o => o.trim()),
+    'https://faithfightersforamerica.com',
+    'https://www.faithfightersforamerica.com',
+    'https://stage.faithfightersforamerica.com',
     // Local development origins
     'http://localhost:3000',
     'http://localhost:3001',
