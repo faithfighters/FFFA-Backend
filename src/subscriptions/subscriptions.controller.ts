@@ -7,7 +7,7 @@ import Stripe from 'stripe';
 import { SubscriptionsService } from './subscriptions.service';
 import { UsersService } from '../users/users.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { PLAN_CONFIG } from '../common/plan-config';
+import { PLAN_CONFIG, VALID_PLANS } from '../common/plan-config';
 import { Types } from 'mongoose';
 import { getFrontendUrl } from '../common/url-resolver';
 
@@ -46,6 +46,7 @@ export class SubscriptionsController {
     if (!stripe) throw new BadRequestException('Stripe is not configured.');
     const { plan } = body;
     if (!plan || !PLAN_PRICE_ID) throw new BadRequestException('Invalid plan.');
+    if (!VALID_PLANS.includes(plan as any)) throw new BadRequestException('Invalid membership plan.');
 
     const user = await this.usersService.findById(req.user.userId);
     if (!user) throw new NotFoundException('User not found.');
