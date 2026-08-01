@@ -12,7 +12,7 @@ import { UsersService } from '../users/users.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { PLAN_CONFIG } from '../common/plan-config';
+import { PLAN_CONFIG, VALID_PLANS } from '../common/plan-config';
 import { Types } from 'mongoose';
 import { PaymentRecord, PaymentRecordDocument } from './schemas/payment-record.schema';
 import { getFrontendUrl } from '../common/url-resolver';
@@ -93,7 +93,8 @@ export class StripeController {
 
       if (!plan) continue;
       const planKey = plan as keyof typeof PLAN_CONFIG;
-      const addedVotes = PLAN_CONFIG[planKey]?.votes ?? 0;
+      if (!PLAN_CONFIG[planKey]) continue;
+      const addedVotes = PLAN_CONFIG[planKey].votes;
       const alreadyOnPlan = fresh.plan === planKey;
       const newVotesTotal = alreadyOnPlan ? (fresh.votesTotal ?? 0) + addedVotes : addedVotes;
       const newVotesRemaining = alreadyOnPlan ? (fresh.votesRemaining ?? 0) + addedVotes : addedVotes;
@@ -251,6 +252,8 @@ export class StripeController {
     const { plan } = body;
     if (!plan || !PLAN_PRICE_ID)
       throw new BadRequestException('Stripe plan price is not configured.');
+    if (!VALID_PLANS.includes(plan as any))
+      throw new BadRequestException('Invalid membership plan.');
 
     const user = await this.usersService.findById(req.user.userId);
     if (!user) throw new NotFoundException('User not found.');
@@ -391,6 +394,9 @@ export class StripeController {
       }
       if (userId && plan) {
         const planKey = plan as keyof typeof PLAN_CONFIG;
+        if (!PLAN_CONFIG[planKey]) {
+          return res.json({ received: true });
+        }
         const existingUser = await this.usersService.findById(userId);
         // Skip if user not found or session already processed (idempotency)
         if (!existingUser || (existingUser.syncedSessionIds || []).includes(session.id)) {
