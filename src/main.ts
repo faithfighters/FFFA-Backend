@@ -25,9 +25,12 @@ async function bootstrap() {
     // Origins from env (comma-separated) — additive to the known production/stage domains below,
     // so a misconfigured or incomplete FRONTEND_URL never locks out either environment.
     ...(process.env.FRONTEND_URL || '').split(',').map(o => o.trim()),
+    ...(process.env.ADMIN_URL || '').split(',').map(o => o.trim()),
     'https://faithfightersforamerica.com',
     'https://www.faithfightersforamerica.com',
     'https://stage.faithfightersforamerica.com',
+    'https://admin.faithfightersforamerica.com',
+    'https://stage-admin.faithfightersforamerica.com',
     // Local development origins
     'http://localhost:3000',
     'http://localhost:3001',
