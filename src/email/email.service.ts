@@ -2,13 +2,19 @@ import { Injectable } from '@nestjs/common';
 import { Resend } from 'resend';
 import { getFrontendUrl } from '../common/url-resolver';
 
-// Landing-page theme tokens (mirrors FFFA-Frontend's page.module.css --hp-* variables)
+// Landing-page brand colors, applied as accents on a light background — mobile
+// Gmail does not reliably render a fully dark email body (it was rewriting the
+// whole template to its own light palette regardless of markup), so instead of
+// fighting that, the same navy/gold/orange palette is used the way a normal
+// light-theme email would: colored header band, colored headings/accents,
+// body copy on white. This is the same approach the original working OTP
+// template used before the body was made fully dark.
 const NAVY_900 = '#0A1834';
-const CARD_BG = '#161B2A';
-const LINE = 'rgba(255,255,255,0.08)';
-const INK_2 = '#C6D2EA';
-const MUTED = '#8A93A8';
-const GOLD_SOFT = '#F0C879';
+const CARD_BG = '#ffffff';
+const LINE = '#e2e8f0';
+const INK_2 = '#334155';
+const MUTED = '#64748b';
+const GOLD_SOFT = '#E4531F';
 const ORANGE_GRADIENT = 'linear-gradient(135deg, #F4B98C 0%, #EE8A4C 50%, #E4531F 100%)';
 
 @Injectable()
@@ -51,35 +57,31 @@ export class EmailService {
 
   private wrap(bodyHtml: string): string {
     const logoUrl = `${getFrontendUrl()}/images/fffa-logo.png`;
-    // Gmail's mobile app does not reliably honor color-scheme meta tags or plain
-    // div background-color — it was rewriting this whole template to a light
-    // palette. The fix professional email templates use is a table layout with
-    // both the `bgcolor` HTML attribute AND inline style on every colored cell;
-    // Gmail's renderer respects that even when it ignores CSS-only backgrounds.
-    // Declaring color-scheme as "dark" only (not "dark light") also stops
-    // clients from synthesizing a light variant of a template that only has
-    // one, dark, palette.
+    // Light background (universally safe across every mail client) with the
+    // brand's navy/gold/orange colors used as accents — a navy header band
+    // behind the logo, colored headings/highlights, white body. This mirrors
+    // the original OTP template's structure, which rendered reliably, instead
+    // of the fully-dark body that mobile Gmail kept rewriting regardless of
+    // markup technique.
     return `<!doctype html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<meta name="color-scheme" content="dark">
-<meta name="supported-color-schemes" content="dark">
 <title>Faith Fighters For America</title>
 </head>
-<body style="margin:0;padding:0;background-color:#06080f;" bgcolor="#06080f">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#06080f;" bgcolor="#06080f">
+<body style="margin:0;padding:0;background-color:#f1f5f9;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f1f5f9;">
 <tr><td align="center" style="padding:32px 16px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background-color:${CARD_BG};border:1px solid ${LINE};border-radius:20px;" bgcolor="${CARD_BG}">
-<tr><td align="center" style="background-color:${NAVY_900};padding:28px 32px;border-bottom:1px solid ${LINE};border-radius:20px 20px 0 0;" bgcolor="${NAVY_900}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background-color:${CARD_BG};border:1px solid ${LINE};border-radius:16px;">
+<tr><td align="center" style="background-color:${NAVY_900};padding:28px 32px;border-radius:16px 16px 0 0;">
 <img src="${logoUrl}" alt="Faith Fighters For America" width="200" style="display:block;max-width:200px;height:auto;border:0;outline:none;" />
 </td></tr>
-<tr><td style="background-color:${CARD_BG};padding:36px 32px;color:${INK_2};font-family:'Inter',system-ui,-apple-system,sans-serif;line-height:1.6;" bgcolor="${CARD_BG}">
+<tr><td style="background-color:${CARD_BG};padding:36px 32px;color:${INK_2};font-family:'Inter',system-ui,-apple-system,sans-serif;line-height:1.6;">
 ${bodyHtml}
 </td></tr>
-<tr><td align="center" style="background-color:#0a0e1a;border-top:1px solid ${LINE};padding:20px 32px;font-size:12px;color:${MUTED};font-family:'Inter',system-ui,-apple-system,sans-serif;border-radius:0 0 20px 20px;" bgcolor="#0a0e1a">
+<tr><td align="center" style="background-color:#f8fafc;border-top:1px solid ${LINE};padding:20px 32px;font-size:12px;color:${MUTED};font-family:'Inter',system-ui,-apple-system,sans-serif;border-radius:0 0 16px 16px;">
 <p style="margin:0 0 4px;">Faith Fighters For America &middot; 1751 Mound St, Suite 201, Sarasota, FL 34236</p>
 <p style="margin:0;">&copy; ${new Date().getFullYear()} Faith Fighters For America. All rights reserved.</p>
 </td></tr>
@@ -91,11 +93,11 @@ ${bodyHtml}
   }
 
   private ctaButton(label: string, href: string): string {
-    return `<a href="${href}" style="display:inline-block;background:${ORANGE_GRADIENT};color:#ffffff;padding:12px 28px;border-radius:999px;text-decoration:none;font-weight:700;font-size:14px;margin-top:16px;box-shadow:0 8px 20px rgba(228,75,52,0.3);">${label} &rarr;</a>`;
+    return `<a href="${href}" style="display:inline-block;background:${ORANGE_GRADIENT};color:#ffffff;padding:12px 28px;border-radius:999px;text-decoration:none;font-weight:600;font-size:14px;margin-top:16px;box-shadow:0 8px 20px rgba(228,75,52,0.25);">${label} &rarr;</a>`;
   }
 
   private heading(text: string): string {
-    return `<h2 style="color:#ffffff;margin:0 0 16px;font-size:20px;font-weight:700;">${text}</h2>`;
+    return `<h2 style="color:${NAVY_900};margin:0 0 16px;font-size:20px;font-weight:700;">${text}</h2>`;
   }
 
   // ── Auth Emails ──────────────────────────────────────────
@@ -139,8 +141,8 @@ ${bodyHtml}
       this.wrap(`
         ${this.heading(`Hi ${name},`)}
         <p style="margin:0 0 16px;">Unfortunately, your video <strong style="color:${GOLD_SOFT};">"${videoTitle}"</strong> was not approved.</p>
-        <div style="background:rgba(255,255,255,0.04);border-left:3px solid #E4531F;padding:12px 16px;border-radius:0 8px 8px 0;">
-          <strong style="color:#ffffff;">Reason:</strong> ${reason}
+        <div style="background-color:#fff1eb;border-left:3px solid #E4531F;padding:12px 16px;border-radius:0 8px 8px 0;">
+          <strong style="color:${NAVY_900};">Reason:</strong> ${reason}
         </div>
         <p style="margin:16px 0 0;font-size:13px;color:${MUTED};">You're welcome to make adjustments and resubmit. If you have questions, contact us at
           <a href="mailto:info@faithfightersforamerica.com" style="color:${GOLD_SOFT};">info@faithfightersforamerica.com</a>.
@@ -170,8 +172,8 @@ ${bodyHtml}
       this.wrap(`
         ${this.heading(`Hi ${name},`)}
         <p style="margin:0 0 16px;">Your campaign <strong style="color:${GOLD_SOFT};">"${causeName}"</strong> was not approved for this cycle.</p>
-        <div style="background:rgba(255,255,255,0.04);border-left:3px solid #E4531F;padding:12px 16px;border-radius:0 8px 8px 0;">
-          <strong style="color:#ffffff;">Reason:</strong> ${reason}
+        <div style="background-color:#fff1eb;border-left:3px solid #E4531F;padding:12px 16px;border-radius:0 8px 8px 0;">
+          <strong style="color:${NAVY_900};">Reason:</strong> ${reason}
         </div>
         <p style="margin:16px 0 0;font-size:13px;color:${MUTED};">Contact us at <a href="mailto:info@faithfightersforamerica.com" style="color:${GOLD_SOFT};">info@faithfightersforamerica.com</a> if you have questions.</p>
       `),
@@ -339,10 +341,10 @@ ${bodyHtml}
 
   private otpCodeBlock(code: string, expiryMinutes: number): string {
     return `
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#1c1808;border:1.5px solid rgba(224,169,60,0.3);border-radius:12px;margin:28px 0;" bgcolor="#1c1808">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fff7ed;border:1.5px solid #fed7aa;border-radius:12px;margin:28px 0;">
         <tr><td align="center" style="padding:24px;">
           <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:38px;font-weight:800;letter-spacing:8px;color:${GOLD_SOFT};margin:0;padding-left:8px;">${code}</div>
-          <p style="color:${MUTED};margin:12px 0 0;font-size:13px;font-weight:500;">Valid for <strong style="color:#ffffff;">${expiryMinutes} minutes</strong> (Single-use only)</p>
+          <p style="color:${MUTED};margin:12px 0 0;font-size:13px;font-weight:500;">Valid for <strong style="color:${NAVY_900};">${expiryMinutes} minutes</strong> (Single-use only)</p>
         </td></tr>
       </table>
     `;
@@ -369,7 +371,7 @@ ${bodyHtml}
         ${this.heading('Password Reset Verification')}
         <p style="margin:0 0 8px;">Hello ${name}, we received a request to reset your password. Use the single-use security code below to authorize this change:</p>
         ${this.otpCodeBlock(code, expiryMinutes)}
-        <p style="margin:0;font-size:13px;font-weight:600;color:#F0C879;background:rgba(228,83,31,0.12);border:1px solid rgba(228,83,31,0.3);padding:12px 16px;border-radius:8px;">
+        <p style="margin:0;font-size:13px;font-weight:600;color:#9a3412;background-color:#fff7ed;border:1px solid #fed7aa;padding:12px 16px;border-radius:8px;">
           ⚠️ SECURITY WARNING: If you did not request a password reset, please change your password immediately or contact support as someone else may be attempting to access your account.
         </p>
       `),
