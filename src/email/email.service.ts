@@ -51,22 +51,36 @@ export class EmailService {
 
   private wrap(bodyHtml: string): string {
     const logoUrl = `${getFrontendUrl()}/images/fffa-logo.png`;
-    return `
+    // Explicit color-scheme meta tags stop Gmail/Outlook mobile from "helpfully"
+    // auto-dark-mode-adjusting the email — without them, clients have been
+    // inserting a light backdrop plate behind the logo image inconsistently.
+    return `<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="dark light">
+<meta name="supported-color-schemes" content="dark light">
+<title>Faith Fighters For America</title>
+</head>
+<body style="margin:0;padding:0;background-color:#06080f;">
     <div style="background-color:#06080f;padding:32px 16px;font-family:'Inter',system-ui,-apple-system,sans-serif;">
-      <div style="max-width:600px;margin:0 auto;background:linear-gradient(160deg,#121c34 0%,#0a0e1a 55%,#080a12 100%);border:1px solid ${LINE};border-radius:20px;overflow:hidden;">
-        <div style="background:${NAVY_900};padding:28px 32px;text-align:center;border-bottom:1px solid ${LINE};">
-          <img src="${logoUrl}" alt="Faith Fighters For America" width="200" style="display:inline-block;max-width:200px;height:auto;" />
+      <div style="max-width:600px;margin:0 auto;background-color:#0a0e1a;border:1px solid ${LINE};border-radius:20px;overflow:hidden;">
+        <div style="background-color:${NAVY_900};padding:28px 32px;text-align:center;border-bottom:1px solid ${LINE};">
+          <img src="${logoUrl}" alt="Faith Fighters For America" width="200" style="display:block;margin:0 auto;max-width:200px;height:auto;border:0;outline:none;" />
         </div>
-        <div style="padding:36px 32px;color:${INK_2};line-height:1.6;">
+        <div style="background-color:${CARD_BG};padding:36px 32px;color:${INK_2};line-height:1.6;">
           ${bodyHtml}
         </div>
-        <div style="border-top:1px solid ${LINE};padding:20px 32px;text-align:center;font-size:12px;color:${MUTED};">
+        <div style="background-color:#0a0e1a;border-top:1px solid ${LINE};padding:20px 32px;text-align:center;font-size:12px;color:${MUTED};">
           <p style="margin:0 0 4px;">Faith Fighters For America &middot; 1751 Mound St, Suite 201, Sarasota, FL 34236</p>
           <p style="margin:0;">&copy; ${new Date().getFullYear()} Faith Fighters For America. All rights reserved.</p>
         </div>
       </div>
     </div>
-    `;
+</body>
+</html>`;
   }
 
   private ctaButton(label: string, href: string): string {
