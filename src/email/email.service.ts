@@ -51,34 +51,41 @@ export class EmailService {
 
   private wrap(bodyHtml: string): string {
     const logoUrl = `${getFrontendUrl()}/images/fffa-logo.png`;
-    // Explicit color-scheme meta tags stop Gmail/Outlook mobile from "helpfully"
-    // auto-dark-mode-adjusting the email — without them, clients have been
-    // inserting a light backdrop plate behind the logo image inconsistently.
+    // Gmail's mobile app does not reliably honor color-scheme meta tags or plain
+    // div background-color — it was rewriting this whole template to a light
+    // palette. The fix professional email templates use is a table layout with
+    // both the `bgcolor` HTML attribute AND inline style on every colored cell;
+    // Gmail's renderer respects that even when it ignores CSS-only backgrounds.
+    // Declaring color-scheme as "dark" only (not "dark light") also stops
+    // clients from synthesizing a light variant of a template that only has
+    // one, dark, palette.
     return `<!doctype html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
-<meta name="color-scheme" content="dark light">
-<meta name="supported-color-schemes" content="dark light">
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark">
 <title>Faith Fighters For America</title>
 </head>
-<body style="margin:0;padding:0;background-color:#06080f;">
-    <div style="background-color:#06080f;padding:32px 16px;font-family:'Inter',system-ui,-apple-system,sans-serif;">
-      <div style="max-width:600px;margin:0 auto;background-color:#0a0e1a;border:1px solid ${LINE};border-radius:20px;overflow:hidden;">
-        <div style="background-color:${NAVY_900};padding:28px 32px;text-align:center;border-bottom:1px solid ${LINE};">
-          <img src="${logoUrl}" alt="Faith Fighters For America" width="200" style="display:block;margin:0 auto;max-width:200px;height:auto;border:0;outline:none;" />
-        </div>
-        <div style="background-color:${CARD_BG};padding:36px 32px;color:${INK_2};line-height:1.6;">
-          ${bodyHtml}
-        </div>
-        <div style="background-color:#0a0e1a;border-top:1px solid ${LINE};padding:20px 32px;text-align:center;font-size:12px;color:${MUTED};">
-          <p style="margin:0 0 4px;">Faith Fighters For America &middot; 1751 Mound St, Suite 201, Sarasota, FL 34236</p>
-          <p style="margin:0;">&copy; ${new Date().getFullYear()} Faith Fighters For America. All rights reserved.</p>
-        </div>
-      </div>
-    </div>
+<body style="margin:0;padding:0;background-color:#06080f;" bgcolor="#06080f">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#06080f;" bgcolor="#06080f">
+<tr><td align="center" style="padding:32px 16px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background-color:${CARD_BG};border:1px solid ${LINE};border-radius:20px;" bgcolor="${CARD_BG}">
+<tr><td align="center" style="background-color:${NAVY_900};padding:28px 32px;border-bottom:1px solid ${LINE};border-radius:20px 20px 0 0;" bgcolor="${NAVY_900}">
+<img src="${logoUrl}" alt="Faith Fighters For America" width="200" style="display:block;max-width:200px;height:auto;border:0;outline:none;" />
+</td></tr>
+<tr><td style="background-color:${CARD_BG};padding:36px 32px;color:${INK_2};font-family:'Inter',system-ui,-apple-system,sans-serif;line-height:1.6;" bgcolor="${CARD_BG}">
+${bodyHtml}
+</td></tr>
+<tr><td align="center" style="background-color:#0a0e1a;border-top:1px solid ${LINE};padding:20px 32px;font-size:12px;color:${MUTED};font-family:'Inter',system-ui,-apple-system,sans-serif;border-radius:0 0 20px 20px;" bgcolor="#0a0e1a">
+<p style="margin:0 0 4px;">Faith Fighters For America &middot; 1751 Mound St, Suite 201, Sarasota, FL 34236</p>
+<p style="margin:0;">&copy; ${new Date().getFullYear()} Faith Fighters For America. All rights reserved.</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
 </body>
 </html>`;
   }
@@ -332,10 +339,12 @@ export class EmailService {
 
   private otpCodeBlock(code: string, expiryMinutes: number): string {
     return `
-      <div style="background:rgba(224,169,60,0.08);border:1.5px solid rgba(224,169,60,0.3);border-radius:12px;padding:24px;text-align:center;margin:28px 0;">
-        <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:38px;font-weight:800;letter-spacing:8px;color:${GOLD_SOFT};margin:0;padding-left:8px;">${code}</div>
-        <p style="color:${MUTED};margin:12px 0 0;font-size:13px;font-weight:500;">Valid for <strong style="color:#ffffff;">${expiryMinutes} minutes</strong> (Single-use only)</p>
-      </div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#1c1808;border:1.5px solid rgba(224,169,60,0.3);border-radius:12px;margin:28px 0;" bgcolor="#1c1808">
+        <tr><td align="center" style="padding:24px;">
+          <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:38px;font-weight:800;letter-spacing:8px;color:${GOLD_SOFT};margin:0;padding-left:8px;">${code}</div>
+          <p style="color:${MUTED};margin:12px 0 0;font-size:13px;font-weight:500;">Valid for <strong style="color:#ffffff;">${expiryMinutes} minutes</strong> (Single-use only)</p>
+        </td></tr>
+      </table>
     `;
   }
 
