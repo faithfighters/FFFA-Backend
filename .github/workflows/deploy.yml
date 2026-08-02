@@ -140,7 +140,7 @@ jobs:
           done
 
           docker ps --filter "name=${{ env.CONTAINER_NAME }}"
-          docker logs --tail=15 ${{ env.CONTAINER_NAME }}
+          docker logs --tail=200 ${{ env.CONTAINER_NAME }}
           echo "🎉 Production deployment complete!"
 
     # Deploy to Staging
@@ -195,5 +195,5 @@ jobs:
           done
 
           docker ps --filter "name=${{ env.CONTAINER_NAME }}"
-          docker logs --tail=15 ${{ env.CONTAINER_NAME }}
+          docker logs --tail=200 ${{ env.CONTAINER_NAME }}
           echo "🎉 Staging deployment complete!"
