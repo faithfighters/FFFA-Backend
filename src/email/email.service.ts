@@ -2,6 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { Resend } from 'resend';
 import { getFrontendUrl } from '../common/url-resolver';
 
+// Landing-page theme tokens (mirrors FFFA-Frontend's page.module.css --hp-* variables)
+const NAVY_900 = '#0A1834';
+const CARD_BG = '#161B2A';
+const LINE = 'rgba(255,255,255,0.08)';
+const INK_2 = '#C6D2EA';
+const MUTED = '#8A93A8';
+const GOLD_SOFT = '#F0C879';
+const ORANGE_GRADIENT = 'linear-gradient(135deg, #F4B98C 0%, #EE8A4C 50%, #E4531F 100%)';
+
 @Injectable()
 export class EmailService {
   private from: string;
@@ -38,6 +47,36 @@ export class EmailService {
     }
   }
 
+  // ── Shared shell: dark navy card, real logo, gold/orange accents — matches the landing page theme ──
+
+  private wrap(bodyHtml: string): string {
+    const logoUrl = `${getFrontendUrl()}/images/fffa-logo.png`;
+    return `
+    <div style="background-color:#06080f;padding:32px 16px;font-family:'Inter',system-ui,-apple-system,sans-serif;">
+      <div style="max-width:600px;margin:0 auto;background:linear-gradient(160deg,#121c34 0%,#0a0e1a 55%,#080a12 100%);border:1px solid ${LINE};border-radius:20px;overflow:hidden;">
+        <div style="background:${NAVY_900};padding:28px 32px;text-align:center;border-bottom:1px solid ${LINE};">
+          <img src="${logoUrl}" alt="Faith Fighters For America" width="200" style="display:inline-block;max-width:200px;height:auto;" />
+        </div>
+        <div style="padding:36px 32px;color:${INK_2};line-height:1.6;">
+          ${bodyHtml}
+        </div>
+        <div style="border-top:1px solid ${LINE};padding:20px 32px;text-align:center;font-size:12px;color:${MUTED};">
+          <p style="margin:0 0 4px;">Faith Fighters For America &middot; 1751 Mound St, Suite 201, Sarasota, FL 34236</p>
+          <p style="margin:0;">&copy; ${new Date().getFullYear()} Faith Fighters For America. All rights reserved.</p>
+        </div>
+      </div>
+    </div>
+    `;
+  }
+
+  private ctaButton(label: string, href: string): string {
+    return `<a href="${href}" style="display:inline-block;background:${ORANGE_GRADIENT};color:#ffffff;padding:12px 28px;border-radius:999px;text-decoration:none;font-weight:700;font-size:14px;margin-top:16px;box-shadow:0 8px 20px rgba(228,75,52,0.3);">${label} &rarr;</a>`;
+  }
+
+  private heading(text: string): string {
+    return `<h2 style="color:#ffffff;margin:0 0 16px;font-size:20px;font-weight:700;">${text}</h2>`;
+  }
+
   // ── Auth Emails ──────────────────────────────────────────
 
   async sendWelcome(to: string, name: string, plan: string) {
@@ -49,19 +88,12 @@ export class EmailService {
     await this.send(
       to,
       'Welcome to Faith Fighters For America!',
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-        <h2 style="color:#db0000;">Welcome, ${name}!</h2>
-        <p>You've joined FFFA as a <strong>${planNames[plan] || plan}</strong> member.</p>
-        <p>You can now log in, cast your votes, and help direct donations to the causes you care about most.</p>
-        <a href="${getFrontendUrl()}/dashboard" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
-          Go to My Dashboard →
-        </a>
-        <p style="margin-top:24px;color:#666;font-size:0.875rem;">
-          Faith Fighters For America · 1751 Mound St, Suite 201, Sarasota, FL 34236
-        </p>
-      </div>
-      `,
+      this.wrap(`
+        ${this.heading(`Welcome, ${name}!`)}
+        <p style="margin:0 0 8px;">You've joined FFFA as a <strong style="color:${GOLD_SOFT};">${planNames[plan] || plan}</strong> member.</p>
+        <p style="margin:0;">You can now log in, cast your votes, and help direct donations to the causes you care about most.</p>
+        ${this.ctaButton('Go to My Dashboard', `${getFrontendUrl()}/dashboard`)}
+      `),
     );
   }
 
@@ -71,15 +103,11 @@ export class EmailService {
     await this.send(
       to,
       'Your video has been approved!',
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-        <h2 style="color:#db0000;">Great news, ${name}!</h2>
-        <p>Your video <strong>"${videoTitle}"</strong> has been approved and is now live on the platform.</p>
-        <a href="${getFrontendUrl()}/media" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
-          View on Platform →
-        </a>
-      </div>
-      `,
+      this.wrap(`
+        ${this.heading(`Great news, ${name}!`)}
+        <p style="margin:0;">Your video <strong style="color:${GOLD_SOFT};">"${videoTitle}"</strong> has been approved and is now live on the platform.</p>
+        ${this.ctaButton('View on Platform', `${getFrontendUrl()}/media`)}
+      `),
     );
   }
 
@@ -87,18 +115,16 @@ export class EmailService {
     await this.send(
       to,
       'Update on your video submission',
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-        <h2 style="color:#333;">Hi ${name},</h2>
-        <p>Unfortunately, your video <strong>"${videoTitle}"</strong> was not approved.</p>
-        <div style="background:#f9f9f9;border-left:4px solid #db0000;padding:12px 16px;margin:16px 0;">
-          <strong>Reason:</strong> ${reason}
+      this.wrap(`
+        ${this.heading(`Hi ${name},`)}
+        <p style="margin:0 0 16px;">Unfortunately, your video <strong style="color:${GOLD_SOFT};">"${videoTitle}"</strong> was not approved.</p>
+        <div style="background:rgba(255,255,255,0.04);border-left:3px solid #E4531F;padding:12px 16px;border-radius:0 8px 8px 0;">
+          <strong style="color:#ffffff;">Reason:</strong> ${reason}
         </div>
-        <p>You're welcome to make adjustments and resubmit. If you have questions, contact us at
-          <a href="mailto:info@faithfightersforamerica.com">info@faithfightersforamerica.com</a>.
+        <p style="margin:16px 0 0;font-size:13px;color:${MUTED};">You're welcome to make adjustments and resubmit. If you have questions, contact us at
+          <a href="mailto:info@faithfightersforamerica.com" style="color:${GOLD_SOFT};">info@faithfightersforamerica.com</a>.
         </p>
-      </div>
-      `,
+      `),
     );
   }
 
@@ -108,15 +134,11 @@ export class EmailService {
     await this.send(
       to,
       'Your campaign has been approved!',
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-        <h2 style="color:#db0000;">Campaign Approved, ${name}!</h2>
-        <p>Your campaign <strong>"${causeName}"</strong> has been approved and is now eligible for the next voting cycle.</p>
-        <a href="${getFrontendUrl()}/leaderboard" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
-          View Leaderboard →
-        </a>
-      </div>
-      `,
+      this.wrap(`
+        ${this.heading(`Campaign Approved, ${name}!`)}
+        <p style="margin:0;">Your campaign <strong style="color:${GOLD_SOFT};">"${causeName}"</strong> has been approved and is now eligible for the next voting cycle.</p>
+        ${this.ctaButton('View Leaderboard', `${getFrontendUrl()}/leaderboard`)}
+      `),
     );
   }
 
@@ -124,31 +146,25 @@ export class EmailService {
     await this.send(
       to,
       'Update on your campaign application',
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-        <h2 style="color:#333;">Hi ${name},</h2>
-        <p>Your campaign <strong>"${causeName}"</strong> was not approved for this cycle.</p>
-        <div style="background:#f9f9f9;border-left:4px solid #db0000;padding:12px 16px;margin:16px 0;">
-          <strong>Reason:</strong> ${reason}
+      this.wrap(`
+        ${this.heading(`Hi ${name},`)}
+        <p style="margin:0 0 16px;">Your campaign <strong style="color:${GOLD_SOFT};">"${causeName}"</strong> was not approved for this cycle.</p>
+        <div style="background:rgba(255,255,255,0.04);border-left:3px solid #E4531F;padding:12px 16px;border-radius:0 8px 8px 0;">
+          <strong style="color:#ffffff;">Reason:</strong> ${reason}
         </div>
-        <p>Contact us at <a href="mailto:info@faithfightersforamerica.com">info@faithfightersforamerica.com</a> if you have questions.</p>
-      </div>
-      `,
+        <p style="margin:16px 0 0;font-size:13px;color:${MUTED};">Contact us at <a href="mailto:info@faithfightersforamerica.com" style="color:${GOLD_SOFT};">info@faithfightersforamerica.com</a> if you have questions.</p>
+      `),
     );
   }
 
   /** Shared shell for the assistance-request lifecycle emails below — keeps six near-identical templates down to one render path. */
   private renderAssistanceRequestEmail(name: string, heading: string, body: string, ctaLabel = 'View My Requests', ctaHref = `${getFrontendUrl()}/dashboard/requests`) {
-    return `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-        <h2 style="color:#E7421B;">${heading}</h2>
-        <p>Hi ${name},</p>
-        ${body}
-        <a href="${ctaHref}" style="display:inline-block;background:#E7421B;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
-          ${ctaLabel} →
-        </a>
-      </div>
-    `;
+    return this.wrap(`
+      ${this.heading(heading)}
+      <p style="margin:0 0 8px;">Hi ${name},</p>
+      ${body}
+      ${this.ctaButton(ctaLabel, ctaHref)}
+    `);
   }
 
   async sendAssistanceRequestReceived(to: string, name: string, requestTitle: string) {
@@ -158,7 +174,7 @@ export class EmailService {
       this.renderAssistanceRequestEmail(
         name,
         'Request Received',
-        `<p>Your request <strong>"${requestTitle}"</strong> has been submitted and is now awaiting review by our team. We'll email you at each step as it moves forward.</p>`,
+        `<p style="margin:0;">Your request <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong> has been submitted and is now awaiting review by our team. We'll email you at each step as it moves forward.</p>`,
       ),
     );
   }
@@ -170,7 +186,7 @@ export class EmailService {
       this.renderAssistanceRequestEmail(
         name,
         'Under Review',
-        `<p>Our team has started reviewing your request <strong>"${requestTitle}"</strong>. We'll let you know as soon as a decision is made.</p>`,
+        `<p style="margin:0;">Our team has started reviewing your request <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong>. We'll let you know as soon as a decision is made.</p>`,
       ),
     );
   }
@@ -182,7 +198,7 @@ export class EmailService {
       this.renderAssistanceRequestEmail(
         name,
         'Request Approved 🎉',
-        `<p>Great news — your request <strong>"${requestTitle}"</strong> has been approved and is now eligible for member votes. The more votes it receives, the sooner it reaches its funding goal.</p>`,
+        `<p style="margin:0;">Great news — your request <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong> has been approved and is now eligible for member votes. The more votes it receives, the sooner it reaches its funding goal.</p>`,
       ),
     );
   }
@@ -194,7 +210,7 @@ export class EmailService {
       this.renderAssistanceRequestEmail(
         name,
         'Votes Are Coming In',
-        `<p>Members of the Faith Fighters community have started voting for your request <strong>"${requestTitle}"</strong>. Keep sharing your story — every vote brings you closer to your goal.</p>`,
+        `<p style="margin:0;">Members of the Faith Fighters community have started voting for your request <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong>. Keep sharing your story — every vote brings you closer to your goal.</p>`,
       ),
     );
   }
@@ -206,7 +222,7 @@ export class EmailService {
       this.renderAssistanceRequestEmail(
         name,
         'Funding Goal Reached 🎉',
-        `<p>Your request <strong>"${requestTitle}"</strong> has received 100% of its required votes! Our team is now arranging payment.</p>`,
+        `<p style="margin:0;">Your request <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong> has received 100% of its required votes! Our team is now arranging payment.</p>`,
       ),
     );
   }
@@ -218,7 +234,7 @@ export class EmailService {
       this.renderAssistanceRequestEmail(
         name,
         'Payment Completed ✅',
-        `<p>Payment for your request <strong>"${requestTitle}"</strong> has been completed. Thank you for being part of the Faith Fighters community — we'll be in touch shortly to invite you to share your story.</p>`,
+        `<p style="margin:0;">Payment for your request <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong> has been completed. Thank you for being part of the Faith Fighters community — we'll be in touch shortly to invite you to share your story.</p>`,
       ),
     );
   }
@@ -230,7 +246,7 @@ export class EmailService {
       this.renderAssistanceRequestEmail(
         name,
         'Case Closed — Thank You 🙏',
-        `<p>Your request <strong>"${requestTitle}"</strong> is now fully closed out. Thank you for sharing your story with the community — it inspires others to keep giving.</p>`,
+        `<p style="margin:0;">Your request <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong> is now fully closed out. Thank you for sharing your story with the community — it inspires others to keep giving.</p>`,
         'View Testimonial Videos',
         `${getFrontendUrl()}/dashboard/testimonials`,
       ),
@@ -244,7 +260,7 @@ export class EmailService {
       this.renderAssistanceRequestEmail(
         name,
         'Your Testimonial Needs Another Look',
-        `<p>Thanks for submitting a testimonial for <strong>"${requestTitle}"</strong>. Our team wasn't able to publish it as submitted (missing details or information that needs a correction), so it's been removed. You're welcome to submit a new one any time.</p>`,
+        `<p style="margin:0;">Thanks for submitting a testimonial for <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong>. Our team wasn't able to publish it as submitted (missing details or information that needs a correction), so it's been removed. You're welcome to submit a new one any time.</p>`,
         'Submit a New Testimonial',
         `${getFrontendUrl()}/dashboard/requests`,
       ),
@@ -255,17 +271,13 @@ export class EmailService {
     await this.send(
       to,
       'Your campaign reached 100% — share your story 🎉',
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-        <h2 style="color:#E7421B;">Congratulations, ${name}! 🎉</h2>
-        <p>Your campaign <strong>"${requestTitle}"</strong> has received 100% of its required votes, and payment has been arranged.</p>
-        <p>Because of votes like theirs, the Faith Fighters community came together and made this happen. We'd love for you to share how this support helped you — it means the world to the members who voted, and inspires others to keep giving.</p>
-        <a href="${getFrontendUrl()}/dashboard/requests" style="display:inline-block;background:#E7421B;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
-          Share Your Testimonial →
-        </a>
-        <p style="margin-top:16px;color:#666;font-size:13px;">Click the button above, find this request under "My Requests," and tap "Share Your Testimonial" — you can submit a short video or write a few words about your experience.</p>
-      </div>
-      `,
+      this.wrap(`
+        ${this.heading(`Congratulations, ${name}! 🎉`)}
+        <p style="margin:0 0 8px;">Your campaign <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong> has received 100% of its required votes, and payment has been arranged.</p>
+        <p style="margin:0;">Because of votes like theirs, the Faith Fighters community came together and made this happen. We'd love for you to share how this support helped you — it means the world to the members who voted, and inspires others to keep giving.</p>
+        ${this.ctaButton('Share Your Testimonial', `${getFrontendUrl()}/dashboard/requests`)}
+        <p style="margin-top:16px;color:${MUTED};font-size:13px;">Click the button above, find this request under "My Requests," and tap "Share Your Testimonial" — you can submit a short video or write a few words about your experience.</p>
+      `),
     );
   }
 
@@ -275,19 +287,15 @@ export class EmailService {
     await this.send(
       to,
       'Your donation votes have been cast!',
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-        <h2 style="color:#db0000;">Votes Confirmed, ${name}!</h2>
-        <p>You've successfully cast your donation votes for this cycle:</p>
-        <ul>
-          ${causes.map(c => `<li>${c}</li>`).join('')}
+      this.wrap(`
+        ${this.heading(`Votes Confirmed, ${name}!`)}
+        <p style="margin:0 0 12px;">You've successfully cast your donation votes for this cycle:</p>
+        <ul style="margin:0 0 16px;padding-left:20px;color:${INK_2};">
+          ${causes.map(c => `<li style="margin-bottom:4px;">${c}</li>`).join('')}
         </ul>
-        <p>80% of your membership fee will be distributed to these causes based on the final vote tally.</p>
-        <a href="${getFrontendUrl()}/leaderboard" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
-          Track the Leaderboard →
-        </a>
-      </div>
-      `,
+        <p style="margin:0;">80% of your membership fee will be distributed to these causes based on the final vote tally.</p>
+        ${this.ctaButton('Track the Leaderboard', `${getFrontendUrl()}/leaderboard`)}
+      `),
     );
   }
 
@@ -297,48 +305,36 @@ export class EmailService {
     await this.send(
       to,
       'Your FFFA membership has been cancelled',
-      `
-      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
-        <h2 style="color:#333;">Hi ${name},</h2>
-        <p>Your Faith Fighters For America membership has been cancelled. You'll retain access until the end of your current billing period.</p>
-        <p>We're sorry to see you go. If you change your mind, you can rejoin at any time.</p>
-        <a href="${getFrontendUrl()}/join" style="display:inline-block;background:#db0000;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:16px;">
-          Rejoin FFFA →
-        </a>
-      </div>
-      `,
+      this.wrap(`
+        ${this.heading(`Hi ${name},`)}
+        <p style="margin:0 0 8px;">Your Faith Fighters For America membership has been cancelled. You'll retain access until the end of your current billing period.</p>
+        <p style="margin:0;">We're sorry to see you go. If you change your mind, you can rejoin at any time.</p>
+        ${this.ctaButton('Rejoin FFFA', `${getFrontendUrl()}/join`)}
+      `),
     );
   }
 
   // ── OTP Emails ───────────────────────────────────────────
 
+  private otpCodeBlock(code: string, expiryMinutes: number): string {
+    return `
+      <div style="background:rgba(224,169,60,0.08);border:1.5px solid rgba(224,169,60,0.3);border-radius:12px;padding:24px;text-align:center;margin:28px 0;">
+        <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:38px;font-weight:800;letter-spacing:8px;color:${GOLD_SOFT};margin:0;padding-left:8px;">${code}</div>
+        <p style="color:${MUTED};margin:12px 0 0;font-size:13px;font-weight:500;">Valid for <strong style="color:#ffffff;">${expiryMinutes} minutes</strong> (Single-use only)</p>
+      </div>
+    `;
+  }
+
   async sendRegisterOtp(to: string, name: string, code: string, expiryMinutes: number) {
     await this.send(
       to,
       'Verify Your Email Address',
-      `
-      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);">
-        <div style="background-color: #0f172a; padding: 32px; text-align: center; border-bottom: 4px solid #dc2626;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">FAITH FIGHTERS</h1>
-          <p style="color: #94a3b8; margin: 4px 0 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;">For America</p>
-        </div>
-        <div style="padding: 40px 32px; color: #334155; line-height: 1.6;">
-          <h2 style="color: #0f172a; margin: 0 0 16px; font-size: 20px; font-weight: 700;">Verify Your Email Address</h2>
-          <p style="margin: 0 0 24px; font-size: 15px;">Welcome to Faith Fighters For America, ${name}! Please verify your email address to complete your registration. Use the single-use security code below:</p>
-          
-          <div style="background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 24px; text-align: center; margin: 28px 0;">
-            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #dc2626; margin: 0; padding-left: 8px;">${code}</div>
-            <p style="color: #64748b; margin: 12px 0 0; font-size: 13px; font-weight: 500;">Valid for <strong>${expiryMinutes} minutes</strong> (Single-use only)</p>
-          </div>
-
-          <p style="margin: 0 0 24px; font-size: 14px; color: #475569;">If you did not request this verification, you can safely ignore this email. No account will be created without this code.</p>
-          <div style="border-top: 1px solid #e2e8f0; margin-top: 32px; padding-top: 24px; text-align: center; font-size: 12px; color: #94a3b8;">
-            <p style="margin: 0 0 4px;">Faith Fighters For America · 1751 Mound St, Suite 201, Sarasota, FL 34236</p>
-            <p style="margin: 0;">&copy; 2026 Faith Fighters For America. All rights reserved.</p>
-          </div>
-        </div>
-      </div>
-      `,
+      this.wrap(`
+        ${this.heading('Verify Your Email Address')}
+        <p style="margin:0 0 8px;">Welcome to Faith Fighters For America, ${name}! Please verify your email address to complete your registration. Use the single-use security code below:</p>
+        ${this.otpCodeBlock(code, expiryMinutes)}
+        <p style="margin:0;font-size:13px;color:${MUTED};">If you did not request this verification, you can safely ignore this email. No account will be created without this code.</p>
+      `),
     );
   }
 
@@ -346,31 +342,14 @@ export class EmailService {
     await this.send(
       to,
       'Password Reset Verification',
-      `
-      <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);">
-        <div style="background-color: #0f172a; padding: 32px; text-align: center; border-bottom: 4px solid #dc2626;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">FAITH FIGHTERS</h1>
-          <p style="color: #94a3b8; margin: 4px 0 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;">For America</p>
-        </div>
-        <div style="padding: 40px 32px; color: #334155; line-height: 1.6;">
-          <h2 style="color: #0f172a; margin: 0 0 16px; font-size: 20px; font-weight: 700;">Password Reset Verification</h2>
-          <p style="margin: 0 0 24px; font-size: 15px;">Hello ${name}, we received a request to reset your password. Use the single-use security code below to authorize this change:</p>
-          
-          <div style="background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 24px; text-align: center; margin: 28px 0;">
-            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #dc2626; margin: 0; padding-left: 8px;">${code}</div>
-            <p style="color: #64748b; margin: 12px 0 0; font-size: 13px; font-weight: 500;">Valid for <strong>${expiryMinutes} minutes</strong> (Single-use only)</p>
-          </div>
-
-          <p style="margin: 0 0 24px; font-size: 14px; color: #b91c1c; font-weight: 600; background-color: #fef2f2; border: 1px solid #fee2e2; padding: 12px 16px; border-radius: 8px;">
-            ⚠️ SECURITY WARNING: If you did not request a password reset, please change your password immediately or contact support as someone else may be attempting to access your account.
-          </p>
-          <div style="border-top: 1px solid #e2e8f0; margin-top: 32px; padding-top: 24px; text-align: center; font-size: 12px; color: #94a3b8;">
-            <p style="margin: 0 0 4px;">Faith Fighters For America · 1751 Mound St, Suite 201, Sarasota, FL 34236</p>
-            <p style="margin: 0;">&copy; 2026 Faith Fighters For America. All rights reserved.</p>
-          </div>
-        </div>
-      </div>
-      `,
+      this.wrap(`
+        ${this.heading('Password Reset Verification')}
+        <p style="margin:0 0 8px;">Hello ${name}, we received a request to reset your password. Use the single-use security code below to authorize this change:</p>
+        ${this.otpCodeBlock(code, expiryMinutes)}
+        <p style="margin:0;font-size:13px;font-weight:600;color:#F0C879;background:rgba(228,83,31,0.12);border:1px solid rgba(228,83,31,0.3);padding:12px 16px;border-radius:8px;">
+          ⚠️ SECURITY WARNING: If you did not request a password reset, please change your password immediately or contact support as someone else may be attempting to access your account.
+        </p>
+      `),
     );
   }
 }
