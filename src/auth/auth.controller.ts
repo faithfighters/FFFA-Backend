@@ -140,8 +140,8 @@ export class AuthController {
     return { success: true, message: 'Password has been reset successfully.' };
   }
 
-  // 10 attempts per IP per 15 minutes — blocks brute-force while allowing normal use
-  @Throttle({ default: { ttl: 900_000, limit: 10 } })
+  // 10 attempts per IP per 5 minutes — blocks brute-force while allowing normal use
+  @Throttle({ default: { ttl: 300_000, limit: 10 } })
   @ApiOperation({ summary: 'Login with email and password' })
   @ApiBody({ schema: { properties: { email: { type: 'string' }, password: { type: 'string' } }, required: ['email', 'password'] } })
   @ApiResponse({ status: 200, description: 'Login successful, session cookie set' })
