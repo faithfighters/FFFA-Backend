@@ -224,6 +224,12 @@ export class VideosController {
 
     if (status === 'approved') {
       await this.assistanceRequestsService.onVideoApproved(id, req.user.userId, reviewer?.name || req.user.userId);
+      if (video.causeId) {
+        const cause = await this.causesService.findById(video.causeId.toString());
+        if (cause && cause.status === 'pending') {
+          await this.causesService.update(video.causeId.toString(), { status: 'active' } as any);
+        }
+      }
     }
 
     return { video: updated };
