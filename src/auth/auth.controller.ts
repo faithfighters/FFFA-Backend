@@ -258,9 +258,22 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   async googleCallback(@Req() req: any, @Res() res: Response) {
-    const { email, name, image, state: redirectState } = req.user as {
+    const { email, name, image, state: rawState } = req.user as {
       email: string; name: string; image: string; state: string;
     };
+
+    // state is normally `{"redirect": "...", "intent": "..."}`; fall back to
+    // treating the whole string as the redirect if an in-flight OAuth request
+    // started just before a deploy that changed this shape.
+    let redirectState = '';
+    let intent = '';
+    try {
+      const parsed = JSON.parse(rawState || '{}');
+      redirectState = parsed.redirect || '';
+      intent = parsed.intent || '';
+    } catch {
+      redirectState = rawState || '';
+    }
 
     const allowedOrigins = [
       ...(process.env.FRONTEND_URL || 'https://stage.faithfightersforamerica.com').split(',').map(o => o.trim()),
@@ -269,12 +282,13 @@ export class AuthController {
       'http://localhost:3001',
     ].filter(Boolean);
 
-    const safeRedirect = redirectState && allowedOrigins.some(o => redirectState.startsWith(o))
+    let safeRedirect = redirectState && allowedOrigins.some(o => redirectState.startsWith(o))
       ? redirectState
       : (process.env.FRONTEND_URL || 'https://stage.faithfightersforamerica.com').split(',')[0].trim();
 
     try {
       let user = await this.usersService.findByEmail(email);
+      const isNewUser = !user;
       if (!user) {
         // New user via Google — passwordHash is a non-empty placeholder that can never
         // be used for email/password login (bcrypt.compare will always fail against it).
@@ -287,6 +301,19 @@ export class AuthController {
         });
       } else if (image && !user.image) {
         await this.usersService.update(user._id.toString(), { image });
+      }
+
+      // A brand-new account created via Google still needs to go through the
+      // same $30 checkout every other new member hits right after signup —
+      // unless this came from the "request help" flow (never requires payment)
+      // or is an admin-portal sign-in (never a paying member flow at all).
+      // Without this, a new member-site user could land straight on the
+      // dashboard with no plan and no prompt to subscribe.
+      const adminUrl = (process.env.ADMIN_URL || '').trim();
+      const isAdminRedirect = !!adminUrl && safeRedirect.startsWith(adminUrl);
+      if (isNewUser && intent !== 'help' && !isAdminRedirect && !safeRedirect.includes('startCheckout')) {
+        const separator = safeRedirect.includes('?') ? '&' : '?';
+        safeRedirect = `${safeRedirect}${separator}startCheckout=faith_fighter`;
       }
 
       const jwt = this.authService.signToken(user._id.toString(), user.role);
