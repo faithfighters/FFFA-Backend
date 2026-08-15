@@ -53,6 +53,7 @@ export class AssistanceRequestsService {
 
     return requests.map(r => {
       const json = (r as any).toJSON();
+      delete json.internalNotes;
       json.requiredVotes = Math.ceil((r.amountRequested || 0) / 0.8);
       const video = r.videoId ? videoMap.get(r.videoId.toString()) : undefined;
       if (video) {
