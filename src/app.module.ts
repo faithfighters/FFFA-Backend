@@ -24,6 +24,7 @@ import { EventsModule } from './events/events.module';
 import { AssistanceRequestsModule } from './assistance-requests/assistance-requests.module';
 import { VolunteersModule } from './volunteers/volunteers.module';
 import { ContactModule } from './contact/contact.module';
+import { SiteContentModule } from './site-content/site-content.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { ContactModule } from './contact/contact.module';
     AssistanceRequestsModule,
     VolunteersModule,
     ContactModule,
+    SiteContentModule,
   ],
   providers: [
     // Apply ThrottlerGuard globally — use @SkipThrottle() to opt out per route
