@@ -1,4 +1,4 @@
-export type FieldType = 'text' | 'textarea' | 'image' | 'repeater';
+export type FieldType = 'text' | 'textarea' | 'image' | 'video' | 'repeater';
 
 export interface BaseFieldDef {
   key: string;
@@ -19,14 +19,19 @@ export interface ImageFieldDef extends BaseFieldDef {
   defaultValue: string;
 }
 
+export interface VideoFieldDef extends BaseFieldDef {
+  type: 'video';
+  defaultValue: string;
+}
+
 export interface RepeaterFieldDef extends BaseFieldDef {
   type: 'repeater';
   itemLabel: string;
-  itemFields: (TextFieldDef | ImageFieldDef)[];
+  itemFields: (TextFieldDef | ImageFieldDef | VideoFieldDef)[];
   defaultValue: Record<string, any>[];
 }
 
-export type FieldDef = TextFieldDef | ImageFieldDef | RepeaterFieldDef;
+export type FieldDef = TextFieldDef | ImageFieldDef | VideoFieldDef | RepeaterFieldDef;
 
 export interface PageManifest {
   page: string;
