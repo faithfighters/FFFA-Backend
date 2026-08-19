@@ -6,6 +6,7 @@ import { CAMPAIGNS_MANIFEST } from './campaigns.manifest';
 import { STORE_MANIFEST } from './store.manifest';
 import { VOLUNTEER_MANIFEST } from './volunteer.manifest';
 import { CONTACT_MANIFEST } from './contact.manifest';
+import { DONATION_MANIFEST } from './donation.manifest';
 
 // Each page's manifest registers here. The admin page-picker and every
 // GET/PATCH /site-content/:page route enumerate pages from this map only —
@@ -18,4 +19,5 @@ export const PAGE_MANIFESTS: Record<string, PageManifest> = {
   store: STORE_MANIFEST,
   volunteer: VOLUNTEER_MANIFEST,
   contact: CONTACT_MANIFEST,
+  donation: DONATION_MANIFEST,
 };
