@@ -14,6 +14,7 @@ import { PRIVACY_POLICY_MANIFEST } from './privacy-policy.manifest';
 import { REFUND_POLICY_MANIFEST } from './refund-policy.manifest';
 import { FAQS_MANIFEST } from './faqs.manifest';
 import { MEDIA_MANIFEST } from './media.manifest';
+import { GLOBAL_MANIFEST } from './global.manifest';
 
 // Each page's manifest registers here. The admin page-picker and every
 // GET/PATCH /site-content/:page route enumerate pages from this map only —
@@ -34,4 +35,5 @@ export const PAGE_MANIFESTS: Record<string, PageManifest> = {
   'refund-policy': REFUND_POLICY_MANIFEST,
   faqs: FAQS_MANIFEST,
   media: MEDIA_MANIFEST,
+  global: GLOBAL_MANIFEST,
 };
