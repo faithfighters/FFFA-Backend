@@ -17,7 +17,6 @@ export const HOME_MANIFEST: PageManifest = {
     { key: 'heroVideoCaption', label: 'Hero video caption', type: 'text', section: 'Hero', defaultValue: 'One Nation. One Mission. · 1:53' },
     { key: 'heroVideoPoster', label: 'Hero video poster image', type: 'image', section: 'Hero', defaultValue: '/images/video-thumbnail.png' },
     { key: 'joinNowLabel', label: '"Join Now" button label (signed-out visitors)', type: 'text', section: 'Hero', defaultValue: 'Join Now' },
-    { key: 'needHelpLabel', label: '"Need Help" button label (signed-out visitors)', type: 'text', section: 'Hero', defaultValue: 'Need Help' },
 
     // ── What We Do ──
     { key: 'whatWeDoEyebrow', label: 'Section eyebrow', type: 'text', section: 'What We Do', defaultValue: '— What We Do' },
