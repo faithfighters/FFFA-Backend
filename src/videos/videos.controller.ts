@@ -112,6 +112,10 @@ export class VideosController {
       }
     }
 
+    if (body.beneficiaryName && targetAmount !== undefined && targetAmount > 500) {
+      throw new BadRequestException('Assistance requests cannot exceed $500 at this time.');
+    }
+
     const user = await this.usersService.findById(req.user.userId);
     const video = await this.videosService.create({
       title,
