@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import Stripe from 'stripe';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 import { UsersService } from '../users/users.service';
 import { VideosService } from '../videos/videos.service';
@@ -21,6 +22,11 @@ import { PLAN_CONFIG } from '../common/plan-config';
 import { Types } from 'mongoose';
 import { PaymentRecord, PaymentRecordDocument } from '../stripe/schemas/payment-record.schema';
 import { AssistanceRequestsService } from '../assistance-requests/assistance-requests.service';
+
+const stripeKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeKey
+  ? new Stripe(stripeKey, { apiVersion: '2025-02-24.acacia' as any })
+  : null;
 
 @ApiTags('Admin')
 @ApiCookieAuth('fffa_session')
@@ -958,5 +964,124 @@ export class AdminController {
     activitiesList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     return { activities: activitiesList.slice(0, 100) };
+  }
+
+  /**
+   * Bring pre-existing Stripe subscribers into the platform without a new
+   * checkout: for each row, find their Stripe customer (by ID if given, else
+   * by email), confirm they have an active subscription, and create/update
+   * their platform account to match — no charge is made, we only read
+   * Stripe's existing state. New accounts get an unusable placeholder
+   * password (never valid for login) so the member sets their own via the
+   * existing "Forgot password" flow.
+   */
+  @ApiOperation({ summary: 'Bulk-import existing Stripe subscribers as active members (no new charge)' })
+  @ApiBody({ schema: { properties: { rows: { type: 'array', items: { properties: { email: { type: 'string' }, stripeCustomerId: { type: 'string' } } } } } } })
+  @Post('members/import-stripe')
+  async importStripeMembers(@Body() body: { rows: { email: string; stripeCustomerId?: string }[] }) {
+    if (!stripe) throw new BadRequestException('Stripe is not configured on this server.');
+    const rows = body.rows || [];
+    if (!rows.length) throw new BadRequestException('rows is required and must not be empty.');
+
+    const results: { email: string; status: 'created' | 'updated' | 'skipped'; reason?: string }[] = [];
+
+    for (const row of rows) {
+      const email = (row.email || '').toLowerCase().trim();
+      if (!email) {
+        results.push({ email: row.email || '(blank)', status: 'skipped', reason: 'No email provided.' });
+        continue;
+      }
+
+      try {
+        let customerId = row.stripeCustomerId?.trim();
+        if (!customerId) {
+          const found = await stripe.customers.list({ email, limit: 1 });
+          customerId = found.data[0]?.id;
+        }
+        if (!customerId) {
+          results.push({ email, status: 'skipped', reason: 'No Stripe customer found for this email.' });
+          continue;
+        }
+
+        const subs = await stripe.subscriptions.list({ customer: customerId, status: 'active', limit: 1 });
+        const sub = subs.data[0];
+        if (!sub) {
+          results.push({ email, status: 'skipped', reason: 'No active Stripe subscription found.' });
+          continue;
+        }
+
+        const customer = await stripe.customers.retrieve(customerId);
+        const name = (!('deleted' in customer) && customer.name) || email.split('@')[0];
+        const planKey = 'faith_fighter' as const;
+        const planVotes = PLAN_CONFIG[planKey].votes;
+
+        const existingUser = await this.usersService.findByEmail(email);
+        let userId: string;
+        let status: 'created' | 'updated';
+
+        if (existingUser) {
+          await this.usersService.update(existingUser._id.toString(), {
+            plan: planKey,
+            votesTotal: planVotes,
+            votesRemaining: planVotes,
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: sub.id,
+          } as any);
+          userId = existingUser._id.toString();
+          status = 'updated';
+        } else {
+          const created = await this.usersService.create({
+            name,
+            email,
+            passwordHash: `migrated_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+            role: 'member',
+            userType: 'donor',
+            plan: planKey,
+            votesTotal: planVotes,
+            votesRemaining: planVotes,
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: sub.id,
+            joinedAt: new Date().toISOString(),
+          } as any);
+          userId = created._id.toString();
+          status = 'created';
+        }
+
+        const existingSub = await this.subsService.findByUserId(userId);
+        const periodEnd = new Date((sub.current_period_end || Date.now() / 1000 + 30 * 86400) * 1000).toISOString();
+        if (existingSub) {
+          await this.subsService.update(existingSub._id.toString(), {
+            plan: planKey,
+            amount: PLAN_CONFIG[planKey].price,
+            status: 'active',
+            stripeSubscriptionId: sub.id,
+            endDate: periodEnd,
+            nextBillingDate: periodEnd,
+          } as any);
+        } else {
+          await this.subsService.create({
+            userId: new Types.ObjectId(userId) as any,
+            plan: planKey,
+            amount: PLAN_CONFIG[planKey].price,
+            status: 'active',
+            startDate: new Date().toISOString(),
+            endDate: periodEnd,
+            nextBillingDate: periodEnd,
+            stripeSubscriptionId: sub.id,
+          });
+        }
+
+        results.push({ email, status });
+      } catch (err: any) {
+        results.push({ email, status: 'skipped', reason: err.message || 'Unexpected error.' });
+      }
+    }
+
+    return {
+      results,
+      createdCount: results.filter(r => r.status === 'created').length,
+      updatedCount: results.filter(r => r.status === 'updated').length,
+      skippedCount: results.filter(r => r.status === 'skipped').length,
+    };
   }
 }
