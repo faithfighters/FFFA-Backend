@@ -30,4 +30,8 @@ export class SubscriptionsService {
   update(id: string, updates: Partial<Subscription>): Promise<SubscriptionDocument | null> {
     return this.subModel.findByIdAndUpdate(id, updates, { new: true }).exec();
   }
+
+  async removeByUserId(userId: string): Promise<void> {
+    await this.subModel.deleteMany({ userId: new Types.ObjectId(userId) }).exec();
+  }
 }

@@ -27,6 +27,10 @@ export class UsersService {
     return this.userModel.findByIdAndUpdate(id, updates, { new: true }).exec();
   }
 
+  async remove(id: string): Promise<UserDocument | null> {
+    return this.userModel.findByIdAndDelete(id).exec();
+  }
+
   sanitize(user: UserDocument) {
     const obj = user.toJSON() as any;
     const { passwordHash, ...safe } = obj;

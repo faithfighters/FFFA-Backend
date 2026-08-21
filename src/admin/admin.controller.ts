@@ -132,6 +132,17 @@ export class AdminController {
     return { user: this.usersService.sanitize(updated) };
   }
 
+  @ApiOperation({ summary: 'Permanently remove a member (frees their email for re-registration)' })
+  @ApiParam({ name: 'id' })
+  @Delete('members/:id')
+  async removeMember(@Param('id') id: string, @Req() req: any) {
+    if (id === req.user?.userId) throw new BadRequestException('You cannot remove your own account.');
+    const deleted = await this.usersService.remove(id);
+    if (!deleted) throw new NotFoundException('User not found.');
+    await this.subsService.removeByUserId(id);
+    return { success: true };
+  }
+
   // ── Subscription endDate backfill ───────────────────────
   @ApiOperation({ summary: 'Backfill endDate for all subscriptions missing it (startDate + 30 days)' })
   @Post('subscriptions/backfill-end-dates')
