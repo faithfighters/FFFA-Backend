@@ -22,4 +22,8 @@ export class VideosService {
   update(id: string, updates: Partial<Video>): Promise<VideoDocument | null> {
     return this.videoModel.findByIdAndUpdate(id, updates, { new: true }).exec();
   }
+
+  remove(id: string): Promise<VideoDocument | null> {
+    return this.videoModel.findByIdAndDelete(id).exec();
+  }
 }

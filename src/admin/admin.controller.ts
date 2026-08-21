@@ -22,6 +22,7 @@ import { PLAN_CONFIG } from '../common/plan-config';
 import { Types } from 'mongoose';
 import { PaymentRecord, PaymentRecordDocument } from '../stripe/schemas/payment-record.schema';
 import { AssistanceRequestsService } from '../assistance-requests/assistance-requests.service';
+import { UploadService } from '../upload/upload.service';
 
 const stripeKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeKey
@@ -46,6 +47,7 @@ export class AdminController {
     private readonly notifService: NotificationsService,
     private readonly transcriptionService: TranscriptionService,
     private readonly assistanceRequestsService: AssistanceRequestsService,
+    private readonly uploadService: UploadService,
   ) {}
 
   // ── Blocked Words ────────────────────────────────────────
@@ -296,6 +298,24 @@ export class AdminController {
     }
 
     return { video: updated };
+  }
+
+  @ApiOperation({ summary: 'Permanently delete a closed or rejected video, including its file in storage' })
+  @ApiParam({ name: 'id' })
+  @Delete('videos/:id')
+  async deleteVideo(@Param('id') id: string) {
+    const video = await this.videosService.findById(id);
+    if (!video) throw new NotFoundException('Video not found.');
+    if (!['closed', 'rejected'].includes((video as any).status))
+      throw new BadRequestException('Only closed or rejected videos can be deleted.');
+
+    for (const url of [(video as any).videoUrl, (video as any).thumbnailUrl]) {
+      const key = this.uploadService.extractKey(url);
+      if (key) await this.uploadService.deleteFile(key).catch(() => {});
+    }
+
+    await this.videosService.remove(id);
+    return { success: true };
   }
 
   // ── Voting Cycles ─────────────────────────────────────────

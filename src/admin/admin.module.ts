@@ -14,6 +14,7 @@ import { AdminSettings, AdminSettingsSchema } from './schemas/admin-settings.sch
 import { StripeModule } from '../stripe/stripe.module';
 import { PaymentRecord, PaymentRecordSchema } from '../stripe/schemas/payment-record.schema';
 import { AssistanceRequestsModule } from '../assistance-requests/assistance-requests.module';
+import { UploadModule } from '../upload/upload.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AssistanceRequestsModule } from '../assistance-requests/assistance-requ
     TranscriptionModule,
     StripeModule,
     AssistanceRequestsModule,
+    UploadModule,
   ],
   controllers: [AdminController],
 })
