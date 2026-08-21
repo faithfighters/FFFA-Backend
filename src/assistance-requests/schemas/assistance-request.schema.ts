@@ -3,14 +3,17 @@ import { Document, Types } from 'mongoose';
 
 export type AssistanceRequestDocument = AssistanceRequest & Document;
 
+// Testimonial is collected before payment is marked complete — recipients are
+// far less likely to follow through with a testimonial once they've already
+// received the funds, so it's gated in ahead of payment_completed.
 export const ASSISTANCE_REQUEST_STATUSES = [
   'submitted',
   'under_review',
   'approved',
   'funding_in_progress',
   'payment_scheduled',
-  'payment_completed',
   'testimonial_received',
+  'payment_completed',
   'case_closed',
 ] as const;
 

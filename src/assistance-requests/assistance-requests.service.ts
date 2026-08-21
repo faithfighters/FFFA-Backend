@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { AssistanceRequest, AssistanceRequestDocument } from './schemas/assistance-request.schema';
@@ -150,6 +150,15 @@ export class AssistanceRequestsService {
   }
 
   async updateFinancials(id: string, updates: Partial<AssistanceRequest>): Promise<AssistanceRequestDocument | null> {
+    // Payment can't be marked completed until the testimonial is in — recipients
+    // are far less likely to follow through once they already have the funds.
+    if (updates.paymentCompleted) {
+      const existing = await this.model.findById(id).exec();
+      if (existing && !['testimonial_received', 'payment_completed', 'case_closed'].includes(existing.status)) {
+        throw new BadRequestException('Cannot mark payment completed until the member has submitted a testimonial.');
+      }
+    }
+
     const updated = await this.model.findByIdAndUpdate(id, updates, { new: true }).exec();
     // Marking payment completed is the trigger for this stage — no separate
     // manual stepper click needed on top of filling in the financials.
@@ -212,7 +221,7 @@ export class AssistanceRequestsService {
     if (!request) return null;
     if (request.memberId.toString() !== memberId) return null;
 
-    const lateEnoughStages = ['payment_completed', 'testimonial_received', 'case_closed'];
+    const lateEnoughStages = ['payment_scheduled', 'testimonial_received', 'payment_completed', 'case_closed'];
     if (!lateEnoughStages.includes(request.status)) return null;
 
     const updates: Partial<AssistanceRequest> = {
@@ -226,7 +235,7 @@ export class AssistanceRequestsService {
       },
     };
 
-    if (request.status === 'payment_completed') {
+    if (request.status === 'payment_scheduled') {
       (updates as any).status = 'testimonial_received';
       (updates as any).statusHistory = [
         ...(request.statusHistory || []),
@@ -267,15 +276,14 @@ export class AssistanceRequestsService {
 
   /**
    * Admin action: email the recipient that their campaign hit 100% and invite
-   * them to submit a testimonial. Only valid once payment is actually marked
-   * complete — by that point the funding goal and payment details are both
-   * already confirmed (payment_completed is only reachable after both), so
-   * there's no separate "votes are 100%" check needed here.
+   * them to submit a testimonial. Valid once payment is scheduled — testimonial
+   * is collected before the funds actually go out, since recipients are far
+   * less likely to follow through once they already have the money.
    */
   async requestTestimonial(id: string): Promise<AssistanceRequestDocument | null> {
     const request = await this.model.findById(id).exec();
     if (!request) return null;
-    if (request.status !== 'payment_completed') return null;
+    if (request.status !== 'payment_scheduled') return null;
 
     const member = await this.usersService.findById(request.memberId.toString());
     if (member?.email) {
@@ -296,7 +304,7 @@ export class AssistanceRequestsService {
    * bad-faith, etc). Resets the testimonial back to unsubmitted rather than a
    * permanent "rejected" state, so the member can submit a corrected one — the
    * case's own status is unaffected except that testimonial_received (which
-   * only makes sense once a testimonial exists) rolls back to payment_completed.
+   * only makes sense once a testimonial exists) rolls back to payment_scheduled.
    */
   async rejectTestimonial(id: string, adminId: string, adminName: string): Promise<AssistanceRequestDocument | null> {
     const request = await this.model.findById(id).exec();
@@ -308,7 +316,7 @@ export class AssistanceRequestsService {
       statusHistory: [
         ...(request.statusHistory || []),
         {
-          status: request.status === 'testimonial_received' ? 'payment_completed' : request.status,
+          status: request.status === 'testimonial_received' ? 'payment_scheduled' : request.status,
           changedAt: new Date().toISOString(),
           changedBy: adminId,
           changedByName: adminName,
@@ -318,7 +326,7 @@ export class AssistanceRequestsService {
     } as any;
 
     if (request.status === 'testimonial_received') {
-      (updates as any).status = 'payment_completed';
+      (updates as any).status = 'payment_scheduled';
     }
 
     const updated = await this.model.findByIdAndUpdate(id, updates, { new: true }).exec();

@@ -54,7 +54,7 @@ export class AssistanceRequestsController {
     if (!request) throw new NotFoundException('Request not found.');
     if (request.memberId.toString() !== req.user.userId) throw new ForbiddenException('Not your request.');
 
-    const lateEnoughStages = ['payment_completed', 'testimonial_received', 'case_closed'];
+    const lateEnoughStages = ['payment_scheduled', 'testimonial_received', 'payment_completed', 'case_closed'];
     if (!lateEnoughStages.includes(request.status))
       throw new BadRequestException('This request is not eligible for a testimonial yet.');
 
