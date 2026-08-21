@@ -83,6 +83,10 @@ export class AssistanceRequestsService {
     return this.model.findByIdAndUpdate(id, updates, { new: true }).exec();
   }
 
+  remove(id: string): Promise<AssistanceRequestDocument | null> {
+    return this.model.findByIdAndDelete(id).exec();
+  }
+
   async setStatus(
     id: string,
     status: string,

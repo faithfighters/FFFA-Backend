@@ -643,6 +643,15 @@ export class AdminController {
     return { request: updated };
   }
 
+  @ApiOperation({ summary: 'Permanently delete an assistance request (does not touch its linked video)' })
+  @ApiParam({ name: 'id' })
+  @Delete('assistance-requests/:id')
+  async deleteAssistanceRequest(@Param('id') id: string) {
+    const deleted = await this.assistanceRequestsService.remove(id);
+    if (!deleted) throw new NotFoundException('Request not found.');
+    return { success: true };
+  }
+
   @ApiOperation({ summary: 'Advance/change an assistance request\'s status' })
   @Patch('assistance-requests/:id/status')
   async updateAssistanceRequestStatus(
