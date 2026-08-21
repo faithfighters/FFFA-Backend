@@ -108,13 +108,13 @@ export class AdminController {
     return { members };
   }
 
-  @ApiOperation({ summary: 'Update member role or plan' })
+  @ApiOperation({ summary: 'Update member role, plan, or active status' })
   @ApiParam({ name: 'id' })
   @Patch('members/:id')
-  async updateMember(@Param('id') id: string, @Body() body: { role?: string; plan?: string }, @Req() req: any) {
+  async updateMember(@Param('id') id: string, @Body() body: { role?: string; plan?: string; isActive?: boolean }, @Req() req: any) {
     const allowedRoles = ['member', 'moderator', 'admin'];
     const allowedPlans = ['faith_builder', 'faith_hero', 'faith_fighter'];
-    const updates: Record<string, string> = {};
+    const updates: Record<string, string | boolean> = {};
     if (body.role !== undefined) {
       if (!allowedRoles.includes(body.role)) throw new BadRequestException('Invalid role.');
       // Only admins can assign the admin role — moderators cannot escalate privileges
@@ -125,6 +125,10 @@ export class AdminController {
     if (body.plan !== undefined) {
       if (!allowedPlans.includes(body.plan)) throw new BadRequestException('Invalid plan.');
       updates.plan = body.plan;
+    }
+    if (body.isActive !== undefined) {
+      if (id === req.user?.userId) throw new BadRequestException('You cannot deactivate your own account.');
+      updates.isActive = body.isActive;
     }
     if (Object.keys(updates).length === 0) throw new BadRequestException('No valid fields to update.');
     const updated = await this.usersService.update(id, updates as any);

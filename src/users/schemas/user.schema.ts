@@ -27,6 +27,10 @@ export class User {
   @Prop({ enum: ['member', 'moderator', 'admin'], default: 'member' })
   role: string;
 
+  /** Deactivated members are blocked from logging in but keep their record (and email) reserved */
+  @Prop({ default: true })
+  isActive: boolean;
+
   /** donor = pays $30 membership upfront, full access | recipient = free signup, submits help videos, paywalled until subscribed */
   @Prop({ enum: ['donor', 'recipient'], default: 'donor' })
   userType: string;
