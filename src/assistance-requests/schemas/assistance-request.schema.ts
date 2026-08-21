@@ -113,11 +113,15 @@ export class AssistanceRequest {
   @Prop()
   paymentDate: string;
 
-  @Prop({ enum: ['ach', 'check', 'paypal', 'other'] })
+  @Prop({ enum: ['ach', 'check', 'paypal', 'credit_card', 'other'] })
   paymentMethod: string;
 
   @Prop()
   paymentReferenceNumber: string;
+
+  /** Uploaded proof-of-payment document/image */
+  @Prop()
+  receiptUrl: string;
 
   /** Admin-only — never returned to the requesting member */
   @Prop()

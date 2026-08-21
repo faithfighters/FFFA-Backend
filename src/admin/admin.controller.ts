@@ -659,7 +659,7 @@ export class AdminController {
   @Patch('assistance-requests/:id/payment-details')
   async updateAssistanceRequestPaymentDetails(
     @Param('id') id: string,
-    @Body() body: { fundsUsage?: string; paymentRecipientType?: string; paymentRecipientName?: string },
+    @Body() body: { fundsUsage?: string; paymentRecipientType?: string; paymentRecipientName?: string; receiptUrl?: string },
   ) {
     const updated = await this.assistanceRequestsService.updatePaymentDetails(id, body);
     if (!updated) throw new NotFoundException('Request not found.');

@@ -9,8 +9,10 @@ import { randomUUID } from 'crypto';
 
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo'];
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ALLOWED_DOCUMENT_TYPES = [...ALLOWED_IMAGE_TYPES, 'application/pdf'];
 const MAX_VIDEO_SIZE_MB = 500;
 const MAX_IMAGE_SIZE_MB = 10;
+const MAX_DOCUMENT_SIZE_MB = 10;
 const PRESIGN_EXPIRY_SECONDS = 300; // 5 minutes
 
 @Injectable()
@@ -44,11 +46,12 @@ export class UploadService {
   async getPresignedUploadUrl(
     contentType: string,
     fileSizeBytes: number,
-    folder: 'videos' | 'thumbnails' | 'images',
+    folder: 'videos' | 'thumbnails' | 'images' | 'documents',
   ): Promise<{ uploadUrl: string; publicUrl: string; key: string }> {
     const isVideo = folder === 'videos';
-    const allowed = isVideo ? ALLOWED_VIDEO_TYPES : ALLOWED_IMAGE_TYPES;
-    const maxMb = isVideo ? MAX_VIDEO_SIZE_MB : MAX_IMAGE_SIZE_MB;
+    const isDocument = folder === 'documents';
+    const allowed = isVideo ? ALLOWED_VIDEO_TYPES : isDocument ? ALLOWED_DOCUMENT_TYPES : ALLOWED_IMAGE_TYPES;
+    const maxMb = isVideo ? MAX_VIDEO_SIZE_MB : isDocument ? MAX_DOCUMENT_SIZE_MB : MAX_IMAGE_SIZE_MB;
 
     if (!allowed.includes(contentType)) {
       throw new BadRequestException(
