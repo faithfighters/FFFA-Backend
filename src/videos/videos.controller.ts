@@ -234,6 +234,8 @@ export class VideosController {
           await this.causesService.update(video.causeId.toString(), { status: 'active' } as any);
         }
       }
+    } else if (status === 'rejected') {
+      await this.assistanceRequestsService.onVideoRejected(id, req.user.userId, reviewer?.name || req.user.userId, rejectionReason);
     }
 
     return { video: updated };

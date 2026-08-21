@@ -6,6 +6,10 @@ export type AssistanceRequestDocument = AssistanceRequest & Document;
 // Testimonial is collected before payment is marked complete — recipients are
 // far less likely to follow through with a testimonial once they've already
 // received the funds, so it's gated in ahead of payment_completed.
+//
+// video_rejected and funding_failed are terminal branch outcomes off the main
+// pipeline (video moderation rejected the submission, or the voting cycle
+// ended without reaching the funding goal) — not part of the linear stepper.
 export const ASSISTANCE_REQUEST_STATUSES = [
   'submitted',
   'under_review',
@@ -15,6 +19,8 @@ export const ASSISTANCE_REQUEST_STATUSES = [
   'testimonial_received',
   'payment_completed',
   'case_closed',
+  'video_rejected',
+  'funding_failed',
 ] as const;
 
 const toJSON = {

@@ -276,6 +276,34 @@ ${bodyHtml}
     );
   }
 
+  async sendAssistanceRequestVideoRejected(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'Update on your assistance request',
+      this.renderAssistanceRequestEmail(
+        name,
+        'Your Request Could Not Move Forward',
+        `<p style="margin:0;">Your video submission for <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong> wasn't approved, so we're unable to move this assistance request forward. If you'd still like help, you're welcome to submit a new request with an updated video.</p>`,
+        'Submit a New Request',
+        `${getFrontendUrl()}/dashboard/submit`,
+      ),
+    );
+  }
+
+  async sendAssistanceRequestFundingFailed(to: string, name: string, requestTitle: string) {
+    await this.send(
+      to,
+      'Update on your assistance request funding',
+      this.renderAssistanceRequestEmail(
+        name,
+        'Funding Window Closed',
+        `<p style="margin:0;">The voting window for <strong style="color:${GOLD_SOFT};">"${requestTitle}"</strong> ended before it reached its funding goal, so we're unable to move forward with this request. If your need is still ongoing, you're welcome to submit a new request.</p>`,
+        'Submit a New Request',
+        `${getFrontendUrl()}/dashboard/submit`,
+      ),
+    );
+  }
+
   async sendTestimonialRejected(to: string, name: string, requestTitle: string) {
     await this.send(
       to,

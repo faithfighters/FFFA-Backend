@@ -295,6 +295,11 @@ export class AdminController {
     if (status === 'approved') {
       const reviewer = await this.usersService.findById(req.user.userId);
       await this.assistanceRequestsService.onVideoApproved(id, req.user.userId, reviewer?.name || req.user.userId);
+    } else if (status === 'rejected') {
+      // Otherwise a linked request would sit at "submitted" forever with no
+      // path forward and no notice to the member.
+      const reviewer = await this.usersService.findById(req.user.userId);
+      await this.assistanceRequestsService.onVideoRejected(id, req.user.userId, reviewer?.name || req.user.userId);
     }
 
     return { video: updated };
@@ -313,6 +318,11 @@ export class AdminController {
       const key = this.uploadService.extractKey(url);
       if (key) await this.uploadService.deleteFile(key).catch(() => {});
     }
+
+    // Cascade — an assistance request has no reason to exist once its
+    // linked video is gone, and would otherwise be left pointing at nothing.
+    const linkedRequest = await this.assistanceRequestsService.findByVideoId(id);
+    if (linkedRequest) await this.assistanceRequestsService.remove(linkedRequest._id.toString());
 
     await this.videosService.remove(id);
     return { success: true };
@@ -649,6 +659,21 @@ export class AdminController {
   async deleteAssistanceRequest(@Param('id') id: string) {
     const deleted = await this.assistanceRequestsService.remove(id);
     if (!deleted) throw new NotFoundException('Request not found.');
+
+    // Cascade — this is a deliberate, confirmed admin action to remove the
+    // whole case, so the linked video (its whole reason for existing) goes
+    // with it, regardless of the video's current status.
+    if ((deleted as any).videoId) {
+      const video = await this.videosService.findById((deleted as any).videoId.toString());
+      if (video) {
+        for (const url of [(video as any).videoUrl, (video as any).thumbnailUrl]) {
+          const key = this.uploadService.extractKey(url);
+          if (key) await this.uploadService.deleteFile(key).catch(() => {});
+        }
+        await this.videosService.remove((deleted as any).videoId.toString());
+      }
+    }
+
     return { success: true };
   }
 
@@ -717,7 +742,7 @@ export class AdminController {
   async approveAssistanceRequestTestimonial(@Param('id') id: string, @Req() req: any) {
     const admin = await this.usersService.findById(req.user.userId);
     const updated = await this.assistanceRequestsService.approveTestimonial(id, req.user.userId, admin?.name || req.user.userId);
-    if (!updated) throw new BadRequestException('Request not found, or no testimonial to approve.');
+    if (!updated) throw new BadRequestException('Request not found, no testimonial to approve, or payment has not been marked completed yet.');
     return { request: updated };
   }
 

@@ -4,9 +4,10 @@ import { VideosModule } from '../videos/videos.module';
 import { CausesModule } from '../causes/causes.module';
 import { UsersModule } from '../users/users.module';
 import { EmailModule } from '../email/email.module';
+import { AssistanceRequestsModule } from '../assistance-requests/assistance-requests.module';
 
 @Module({
-  imports: [VideosModule, CausesModule, UsersModule, EmailModule],
+  imports: [VideosModule, CausesModule, UsersModule, EmailModule, AssistanceRequestsModule],
   controllers: [ModeratorController],
 })
 export class ModeratorModule {}

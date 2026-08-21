@@ -1,4 +1,5 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { AssistanceRequest, AssistanceRequestDocument } from './schemas/assistance-request.schema';
@@ -10,6 +11,8 @@ import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class AssistanceRequestsService {
+  private readonly logger = new Logger(AssistanceRequestsService.name);
+
   constructor(
     @InjectModel(AssistanceRequest.name) private model: Model<AssistanceRequestDocument>,
     @InjectModel(Vote.name) private voteModel: Model<VoteDocument>,
@@ -148,6 +151,10 @@ export class AssistanceRequestsService {
         return this.emailService.sendAssistanceRequestPaymentCompleted(member.email, request.memberName, requestTitle);
       case 'case_closed':
         return this.emailService.sendAssistanceRequestCaseClosed(member.email, request.memberName, requestTitle);
+      case 'video_rejected':
+        return this.emailService.sendAssistanceRequestVideoRejected(member.email, request.memberName, requestTitle);
+      case 'funding_failed':
+        return this.emailService.sendAssistanceRequestFundingFailed(member.email, request.memberName, requestTitle);
       default:
         return;
     }
@@ -185,6 +192,24 @@ export class AssistanceRequestsService {
   }
 
   /**
+   * Called after a video is rejected in moderation: if it has a linked
+   * assistance request still sitting at "submitted", closes that request out
+   * as video_rejected instead of leaving it orphaned indefinitely with no
+   * path forward and no notice to the member.
+   */
+  async onVideoRejected(videoId: string, changedBy: string, changedByName: string, rejectionReason?: string): Promise<void> {
+    const request = await this.findByVideoId(videoId);
+    if (!request || request.status !== 'submitted') return;
+    await this.setStatus(
+      request._id.toString(),
+      'video_rejected',
+      changedBy,
+      changedByName,
+      rejectionReason ? `Auto-closed: linked video rejected (${rejectionReason}).` : 'Auto-closed: linked video rejected.',
+    );
+  }
+
+  /**
    * Called after votes are cast on a video: keeps the request's stage in sync
    * with real funding progress instead of requiring an admin to watch the
    * video and manually advance the stepper.
@@ -210,6 +235,35 @@ export class AssistanceRequestsService {
     if (request.status === 'approved' && voteCount > 0) {
       await this.setStatus(request._id.toString(), 'funding_in_progress', 'system', 'System', 'Auto-advanced: first vote received.');
     }
+  }
+
+  /**
+   * Daily sweep: a request only ever advances forward on a vote event
+   * (syncFundingStatus), so one that never reaches its goal before its
+   * video's voting cycle ends would otherwise sit at approved/
+   * funding_in_progress forever with no resolution. This closes it out as
+   * funding_failed instead, and notifies the member.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_1AM)
+  async checkFundingExpirations(): Promise<void> {
+    const candidates = await this.model.find({ status: { $in: ['approved', 'funding_in_progress'] } }).exec();
+    let failed = 0;
+
+    for (const request of candidates) {
+      if (!request.videoId) continue;
+      const video = await this.videoModel.findById(request.videoId).exec();
+      if (!video?.votingCycleEndDate) continue;
+      if (new Date(video.votingCycleEndDate) > new Date()) continue; // cycle still open
+
+      const requiredVotes = Math.ceil((request.amountRequested || 0) / 0.8);
+      const voteCount = video.voteCount || 0;
+      if (requiredVotes > 0 && voteCount >= requiredVotes) continue; // goal was actually met
+
+      await this.setStatus(request._id.toString(), 'funding_failed', 'system', 'System', 'Auto-closed: voting cycle ended without reaching the funding goal.');
+      failed++;
+    }
+
+    if (failed > 0) this.logger.log(`Funding expiration sweep: closed ${failed} request(s) as funding_failed.`);
   }
 
   updatePaymentDetails(id: string, updates: Partial<AssistanceRequest>): Promise<AssistanceRequestDocument | null> {
@@ -357,6 +411,10 @@ export class AssistanceRequestsService {
     const request = await this.model.findById(id).exec();
     if (!request) return null;
     if (request.testimonial?.status !== 'submitted') return null;
+    // Testimonial now comes before payment in the pipeline — a case can only
+    // be closed once payment has actually gone out, not just once the
+    // testimonial is in.
+    if (request.status !== 'payment_completed') return null;
 
     return this.setStatus(id, 'case_closed', adminId, adminName, 'Testimonial approved by admin; case closed.');
   }

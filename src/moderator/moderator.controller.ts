@@ -9,6 +9,7 @@ import { CausesService } from '../causes/causes.service';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AssistanceRequestsService } from '../assistance-requests/assistance-requests.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiBody, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 
 /**
@@ -26,6 +27,7 @@ export class ModeratorController {
     private readonly usersService: UsersService,
     private readonly emailService: EmailService,
     private readonly notifService: NotificationsService,
+    private readonly assistanceRequestsService: AssistanceRequestsService,
   ) {}
 
   // ── Review Queue ─────────────────────────────────────────
@@ -133,6 +135,14 @@ export class ModeratorController {
       votingCycleStartDate: status === 'approved' ? votingCycleStartDate : undefined,
       votingCycleEndDate: status === 'approved' ? votingCycleEndDate : undefined,
     } as any);
+
+    // Otherwise a linked assistance request would sit at "submitted" forever
+    // with no path forward and no notice to the member.
+    if (status === 'approved') {
+      await this.assistanceRequestsService.onVideoApproved(id, req.user.userId, reviewer?.name || req.user.userId);
+    } else {
+      await this.assistanceRequestsService.onVideoRejected(id, req.user.userId, reviewer?.name || req.user.userId, rejectionReason);
+    }
 
     const submitter = await this.usersService.findById(video.authorId?.toString());
     if (submitter) {
