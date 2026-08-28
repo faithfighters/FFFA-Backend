@@ -129,9 +129,11 @@ jobs:
 
           sleep 15
           echo "🏥 Health checks..."
+          HEALTHY=0
           for i in {1..5}; do
             if curl -f http://localhost:${{ env.APP_PORT }}/health 2>/dev/null || curl -f http://localhost:${{ env.APP_PORT }} 2>/dev/null; then
               echo "✅ Health check passed"
+              HEALTHY=1
               break
             else
               echo "⏳ Retry $i/5"
@@ -141,6 +143,11 @@ jobs:
 
           docker ps --filter "name=${{ env.CONTAINER_NAME }}"
           docker logs --tail=200 ${{ env.CONTAINER_NAME }}
+
+          if [ "$HEALTHY" != "1" ]; then
+            echo "❌ Health check failed after 5 retries — container is not responding."
+            exit 1
+          fi
           echo "🎉 Production deployment complete!"
 
     # Deploy to Staging
@@ -184,9 +191,11 @@ jobs:
 
           sleep 15
           echo "🏥 Health checks..."
+          HEALTHY=0
           for i in {1..5}; do
             if curl -f http://localhost:${{ env.APP_PORT }}/health 2>/dev/null || curl -f http://localhost:${{ env.APP_PORT }} 2>/dev/null; then
               echo "✅ Health check passed"
+              HEALTHY=1
               break
             else
               echo "⏳ Retry $i/5"
@@ -196,4 +205,31 @@ jobs:
 
           docker ps --filter "name=${{ env.CONTAINER_NAME }}"
           docker logs --tail=200 ${{ env.CONTAINER_NAME }}
+
+          if [ "$HEALTHY" != "1" ]; then
+            echo "❌ Health check failed after 5 retries — container is not responding."
+            exit 1
+          fi
           echo "🎉 Staging deployment complete!"
+
+    - name: Notify on deployment failure
+      if: failure()
+      run: |
+        TEXT="The deployment workflow failed.
+
+        Repo: ${{ github.repository }}
+        Branch: ${{ env.BRANCH_NAME }}
+        Commit: ${{ github.sha }}
+        Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+        BODY=$(jq -n \
+          --arg from "help@faithfightersforamerica.com" \
+          --arg to "help@faithfightersforamerica.com" \
+          --arg subject "🚨 Deploy failed — ${{ github.repository }}" \
+          --arg text "$TEXT" \
+          '{from: $from, to: $to, subject: $subject, text: $text}')
+
+        curl -s -X POST https://api.resend.com/emails \
+          -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d "$BODY"
