@@ -25,8 +25,10 @@ import { AssistanceRequestsModule } from './assistance-requests/assistance-reque
 import { VolunteersModule } from './volunteers/volunteers.module';
 import { ContactModule } from './contact/contact.module';
 import { SiteContentModule } from './site-content/site-content.module';
+import { HealthController } from './health.controller';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     // Global rate limiter — default: 100 req / 60s per IP
