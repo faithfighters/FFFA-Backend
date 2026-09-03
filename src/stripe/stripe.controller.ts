@@ -49,18 +49,32 @@ export class StripeController {
     if (!user) throw new NotFoundException('User not found.');
     const userId = (user as any)._id.toString();
 
-    // Fetch completed sessions for this user from Stripe
-    let sessionData: Stripe.Checkout.Session[];
-    if (user.stripeCustomerId) {
-      const list = await stripe.checkout.sessions.list({ customer: user.stripeCustomerId, limit: 20 });
-      sessionData = list.data;
-    } else {
-      // No customer ID yet — scan recent sessions and match by metadata.userId or email
+    // Fetch completed sessions for this user from Stripe. A stored customer
+    // ID from before a test-mode -> live-mode key switch won't exist under
+    // the new key (test and live are separate Stripe namespaces) — fall back
+    // to the metadata/email scan instead of letting that error bubble up.
+    const scanByMetadataOrEmail = async (): Promise<Stripe.Checkout.Session[]> => {
       const list = await stripe.checkout.sessions.list({ limit: 100 });
-      sessionData = list.data.filter(s =>
+      return list.data.filter(s =>
         s.metadata?.userId === userId ||
         s.customer_details?.email?.toLowerCase() === user.email.toLowerCase(),
       );
+    };
+
+    let sessionData: Stripe.Checkout.Session[];
+    if (user.stripeCustomerId) {
+      try {
+        const list = await stripe.checkout.sessions.list({ customer: user.stripeCustomerId, limit: 20 });
+        sessionData = list.data;
+      } catch (err: any) {
+        if (err?.code === 'resource_missing') {
+          sessionData = await scanByMetadataOrEmail();
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      sessionData = await scanByMetadataOrEmail();
     }
 
     let synced = 0;
@@ -555,10 +569,18 @@ export class StripeController {
       throw new BadRequestException('No Stripe customer found.');
 
     const frontendUrl = getFrontendUrl();
-    const session = await stripe.billingPortal.sessions.create({
-      customer: user.stripeCustomerId,
-      return_url: `${frontendUrl}/dashboard`,
-    });
-    return { url: session.url };
+    try {
+      const session = await stripe.billingPortal.sessions.create({
+        customer: user.stripeCustomerId,
+        return_url: `${frontendUrl}/dashboard`,
+      });
+      return { url: session.url };
+    } catch (err: any) {
+      if (err?.code !== 'resource_missing') throw err;
+      // Stale customer ID from before a test-mode -> live-mode key switch —
+      // clear it so future attempts don't keep hitting the same dead record.
+      await this.usersService.update((user as any)._id.toString(), { stripeCustomerId: '' } as any);
+      throw new BadRequestException('No active billing profile found yet — make a purchase first to set one up.');
+    }
   }
 }

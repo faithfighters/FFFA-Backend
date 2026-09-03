@@ -18,6 +18,29 @@ const stripe = stripeKey
 
 const PLAN_PRICE_ID = process.env.STRIPE_PRICE_PLAN || '';
 
+/**
+ * Creates a Checkout Session, preferring the user's stored Stripe customer ID
+ * so their card is pre-filled. A customer ID saved before a test-mode ->
+ * live-mode key switch won't exist under the new key (test and live are
+ * separate Stripe namespaces) — rather than blocking the purchase, clear the
+ * stale ID and retry keyed by email instead.
+ */
+async function createCheckoutSessionSafe(
+  usersService: UsersService,
+  user: { _id: unknown; email: string; stripeCustomerId?: string },
+  sessionParams: Stripe.Checkout.SessionCreateParams,
+): Promise<Stripe.Checkout.Session> {
+  if (user.stripeCustomerId) {
+    try {
+      return await stripe!.checkout.sessions.create({ ...sessionParams, customer: user.stripeCustomerId });
+    } catch (err: any) {
+      if (err?.code !== 'resource_missing') throw err;
+      await usersService.update((user._id as any).toString(), { stripeCustomerId: '' } as any);
+    }
+  }
+  return stripe!.checkout.sessions.create({ ...sessionParams, customer_email: user.email });
+}
+
 const WELCOME_KIT_PRICE_ID = process.env.STRIPE_PRICE_WELCOME_KIT || '';
 
 @ApiTags('Subscription')
@@ -120,13 +143,7 @@ export class SubscriptionsController {
       cancel_url: `${frontendUrl}/dashboard/subscription?plan=${plan}&cancelled=true`,
     };
 
-    if (user.stripeCustomerId) {
-      sessionParams.customer = user.stripeCustomerId;
-    } else {
-      sessionParams.customer_email = user.email;
-    }
-
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    const session = await createCheckoutSessionSafe(this.usersService, user, sessionParams);
     return { url: session.url };
   }
 
@@ -167,13 +184,7 @@ export class SubscriptionsController {
       cancel_url: `${frontendUrl}/dashboard/subscription`,
     };
 
-    if (user.stripeCustomerId) {
-      sessionParams.customer = user.stripeCustomerId;
-    } else {
-      sessionParams.customer_email = user.email;
-    }
-
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    const session = await createCheckoutSessionSafe(this.usersService, user, sessionParams);
     return { url: session.url };
   }
 
